@@ -22,7 +22,7 @@ Murmur is a lightweight terminal multiplexer built for developers who work with 
 ## Quick Start
 
 ```bash
-git clone https://github.com/user/murmur.git
+git clone https://github.com/steadymoka/murmur.git
 cd murmur
 cargo build --release
 ./target/release/murmur

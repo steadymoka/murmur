@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2021"
 description = "Terminal command center for AI coding sessions"
 license = "MIT"
-repository = "https://github.com/user/murmur"
+repository = "https://github.com/steadymoka/murmur"
+homepage = "https://github.com/steadymoka/murmur"
+readme = "README.md"
 keywords = ["tui", "terminal", "ai", "claude", "kanban"]
 categories = ["command-line-utilities", "development-tools"]
+exclude = [".github/", ".gitignore", "Makefile"]
 
 [dependencies]
 ratatui = "0.30"
