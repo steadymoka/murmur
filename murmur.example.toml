@@ -1,0 +1,10 @@
+# Per-project Murmur configuration
+# Copy to ./murmur.toml in your project root
+
+name = "my-project"
+board = "./murmur-board.md"
+cards_dir = "./cards"
+
+[agent]
+command = "claude"             # 기본값: $SHELL
+args = ["--project", "."]
