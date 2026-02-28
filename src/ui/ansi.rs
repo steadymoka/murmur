@@ -41,43 +41,39 @@ pub fn clear_rows(stdout: &mut io::Stdout, from: u16, to: u16) {
     stdout.flush().ok();
 }
 
-/// Render the PIN bar starting at `start_row` (1-indexed) with yellow bold text.
-/// Multiline pinned_prompt renders each line on its own row.
+/// Render the PIN bar starting at `start_row` (1-indexed).
+/// Uses a left-bar chat style: ▎ line
 pub fn render_pin_bar(stdout: &mut io::Stdout, start_row: u16, cols: u16, pinned_prompt: &str) {
     save_cursor(stdout);
 
     if pinned_prompt.is_empty() {
         move_to(stdout, start_row, 1);
         clear_line(stdout);
-        write!(stdout, "\x1b[1;33m PIN: (none)\x1b[0m").ok();
+        write!(
+            stdout,
+            "\x1b[90m \u{258e} (no prompt)\x1b[0m"
+        )
+        .ok();
     } else {
+        let available = (cols as usize).saturating_sub(4);
         let lines: Vec<&str> = pinned_prompt.split('\n').collect();
         for (i, line) in lines.iter().enumerate() {
             let row = start_row + i as u16;
             move_to(stdout, row, 1);
             clear_line(stdout);
 
-            let is_last = i == lines.len() - 1;
-            let (prefix, suffix) = match (i, is_last) {
-                (0, true) => (" PIN: \u{201c}", "\u{201d}"),
-                (0, false) => (" PIN: \u{201c}", ""),
-                (_, true) => ("       ", "\u{201d}"),
-                (_, false) => ("       ", ""),
-            };
-
-            let available = (cols as usize).saturating_sub(prefix.len() + suffix.len() + 1);
-            let text = if line.len() > available {
-                format!(
-                    "{}{}...{}",
-                    prefix,
-                    &line[..available.saturating_sub(3)],
-                    suffix
-                )
+            let display = if line.len() > available {
+                format!("{}...", &line[..available.saturating_sub(3)])
             } else {
-                format!("{}{}{}", prefix, line, suffix)
+                (*line).to_string()
             };
 
-            write!(stdout, "\x1b[1;33m{}\x1b[0m", text).ok();
+            write!(
+                stdout,
+                "\x1b[36m \u{258e}\x1b[0m \x1b[33m{}\x1b[0m",
+                display
+            )
+            .ok();
         }
     }
 

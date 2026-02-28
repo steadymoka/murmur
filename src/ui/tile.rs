@@ -84,23 +84,24 @@ fn draw_status_line(frame: &mut Frame, session: &Session, area: Rect) {
 
 fn draw_pinned_prompt(frame: &mut Frame, session: &Session, area: Rect) {
     if session.pinned_prompt.is_empty() {
-        let line = Line::from(Span::styled(
-            " > (no pinned prompt)",
-            Style::default().fg(Color::DarkGray),
-        ));
+        let line = Line::from(vec![
+            Span::styled(" \u{258e} ", Style::default().fg(Color::DarkGray)),
+            Span::styled("(no prompt)", Style::default().fg(Color::DarkGray)),
+        ]);
         frame.render_widget(Paragraph::new(line), area);
     } else {
-        let max_width = area.width.saturating_sub(4) as usize;
-        let display = if session.pinned_prompt.len() > max_width {
-            format!(
-                " > {}...",
-                &session.pinned_prompt[..max_width.saturating_sub(3)]
-            )
-        } else {
-            format!(" > {}", session.pinned_prompt)
-        };
-        let line = Line::from(Span::styled(display, Style::default().fg(Color::Yellow)));
-        frame.render_widget(Paragraph::new(line), area);
+        let lines: Vec<Line> = session
+            .pinned_prompt
+            .split('\n')
+            .take(area.height as usize)
+            .map(|text| {
+                Line::from(vec![
+                    Span::styled(" \u{258e} ", Style::default().fg(Color::Cyan)),
+                    Span::styled(text, Style::default().fg(Color::Yellow)),
+                ])
+            })
+            .collect();
+        frame.render_widget(Paragraph::new(lines), area);
     }
 }
 
