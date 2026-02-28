@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cargo tree:*)",
-      "Bash(cargo package:*)"
-    ]
-  }
-}
