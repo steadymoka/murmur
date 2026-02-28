@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
@@ -11,6 +12,18 @@ pub enum SessionStatus {
     Exited(u32),
 }
 
+struct TitleTracker {
+    title: Arc<Mutex<String>>,
+}
+
+impl vt100::Callbacks for TitleTracker {
+    fn set_window_title(&mut self, _: &mut vt100::Screen, title: &[u8]) {
+        if let Ok(mut t) = self.title.lock() {
+            *t = String::from_utf8_lossy(title).to_string();
+        }
+    }
+}
+
 pub struct Session {
     pub name: String,
     pub cwd: PathBuf,
@@ -18,7 +31,8 @@ pub struct Session {
     pub input_buffer: String,
     pub status: SessionStatus,
     pub was_alternate_screen: bool,
-    parser: vt100::Parser,
+    window_title: Arc<Mutex<String>>,
+    parser: vt100::Parser<TitleTracker>,
     pty_rx: mpsc::Receiver<Vec<u8>>,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
@@ -67,7 +81,11 @@ impl Session {
             }
         });
 
-        let parser = vt100::Parser::new(rows, cols, 0);
+        let title_arc = Arc::new(Mutex::new(String::new()));
+        let tracker = TitleTracker {
+            title: Arc::clone(&title_arc),
+        };
+        let parser = vt100::Parser::new_with_callbacks(rows, cols, 0, tracker);
 
         Ok(Session {
             name,
@@ -76,6 +94,7 @@ impl Session {
             input_buffer: String::new(),
             status: SessionStatus::Running,
             was_alternate_screen: false,
+            window_title: title_arc,
             parser,
             pty_rx: rx,
             master: pair.master,
@@ -132,6 +151,19 @@ impl Session {
         })?;
         self.parser.screen_mut().set_size(rows, cols);
         Ok(())
+    }
+
+    pub fn window_title(&self) -> String {
+        self.window_title
+            .lock()
+            .map(|t| t.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn is_claude_code(&self) -> bool {
+        let title = self.window_title();
+        let lower = title.to_ascii_lowercase();
+        lower.contains("claude")
     }
 
     pub fn track_input(&mut self, c: char) {

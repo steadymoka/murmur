@@ -90,7 +90,7 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
             let pin_start = rows - bar_rows + 1;
             let hint_row = rows;
             ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
-            ansi::render_hint_bar(stdout, hint_row, app.prefix_armed);
+            ansi::render_hint_bar(stdout, hint_row, app.prefix_armed, &session.window_title());
 
             // Restore cursor to PTY position
             let (cr, cc) = session.screen().cursor_position();
@@ -125,14 +125,20 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                     ansi::reset_scroll_region(stdout);
                 } else {
                     let bar_rows = app.bar_rows;
-                    let scroll_bottom = rows.saturating_sub(bar_rows);
-                    ansi::set_scroll_region(stdout, 1, scroll_bottom);
-                    // Re-render bars after leaving alt screen
-                    let pin_start = rows - bar_rows + 1;
-                    let hint_row = rows;
-                    ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
-                    ansi::render_hint_bar(stdout, hint_row, app.prefix_armed);
+                    ansi::set_scroll_region(stdout, 1, rows.saturating_sub(bar_rows));
                 }
+            }
+
+            // Re-render bars after PTY output to keep them visible
+            if !is_alt {
+                let bar_rows = app.bar_rows;
+                let pin_start = rows - bar_rows + 1;
+                ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
+                ansi::render_hint_bar(stdout, rows, app.prefix_armed, &session.window_title());
+                // Restore cursor to where PTY left it
+                let (cr, cc) = session.screen().cursor_position();
+                write!(stdout, "\x1b[{};{}H", cr + 1, cc + 1).ok();
+                stdout.flush().ok();
             }
         }
     }
@@ -173,7 +179,12 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                             new_cols,
                             &session.pinned_prompt,
                         );
-                        ansi::render_hint_bar(stdout, hint_row, app.prefix_armed);
+                        ansi::render_hint_bar(
+                            stdout,
+                            hint_row,
+                            app.prefix_armed,
+                            &session.window_title(),
+                        );
                     }
                 }
             }
@@ -198,16 +209,17 @@ fn handle_focus_key(
 
     if is_prefix {
         app.prefix_armed = true;
-        // Re-render hint bar to show armed state
         let hint_row = app.rows;
-        ansi::render_hint_bar(stdout, hint_row, true);
+        let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
+        ansi::render_hint_bar(stdout, hint_row, true, &title);
         return Ok(());
     }
 
     if app.prefix_armed {
         app.prefix_armed = false;
         let hint_row = app.rows;
-        ansi::render_hint_bar(stdout, hint_row, false);
+        let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
+        ansi::render_hint_bar(stdout, hint_row, false, &title);
 
         match key.code {
             KeyCode::Char('o') => {
@@ -259,7 +271,12 @@ fn handle_focus_key(
                 if !session.screen().alternate_screen() {
                     ansi::set_scroll_region(stdout, 1, term_rows);
                 }
-                ansi::render_hint_bar(stdout, app.rows, app.prefix_armed);
+                ansi::render_hint_bar(
+                    stdout,
+                    app.rows,
+                    app.prefix_armed,
+                    &session.window_title(),
+                );
             }
             let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
             ansi::render_pin_bar(stdout, pin_start, app.cols, &session.pinned_prompt);

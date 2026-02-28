@@ -86,25 +86,32 @@ pub fn render_pin_bar(stdout: &mut io::Stdout, start_row: u16, cols: u16, pinned
 }
 
 /// Render the hint bar at the given row (1-indexed).
-pub fn render_hint_bar(stdout: &mut io::Stdout, row: u16, prefix_armed: bool) {
+pub fn render_hint_bar(
+    stdout: &mut io::Stdout,
+    row: u16,
+    prefix_armed: bool,
+    window_title: &str,
+) {
     save_cursor(stdout);
     move_to(stdout, row, 1);
     clear_line(stdout);
 
     if prefix_armed {
-        // Highlighted: cyan background black text
         write!(
             stdout,
             "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m o: overview  q: quit \x1b[0m"
         )
         .ok();
     } else {
-        // Normal: cyan key, dark gray separator
         write!(
             stdout,
             "\x1b[36m Ctrl+\\\x1b[90m \u{2192} \x1b[36mo\x1b[0m: overview"
         )
         .ok();
+    }
+
+    if !window_title.is_empty() {
+        write!(stdout, "\x1b[90m  \u{2502} {}\x1b[0m", window_title).ok();
     }
 
     restore_cursor(stdout);

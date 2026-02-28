@@ -13,15 +13,25 @@ pub fn draw(frame: &mut Frame, session: &Session, area: Rect, selected: bool) {
     } else {
         Color::DarkGray
     };
+    let title_text = if session.is_claude_code() {
+        format!(" {} \u{2726} Claude ", session.name)
+    } else {
+        format!(" {} ", session.name)
+    };
+    let title_style = if session.is_claude_code() {
+        Style::default()
+            .fg(Color::LightMagenta)
+            .add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD)
+    };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color))
-        .title(format!(" {} ", session.name))
-        .title_style(
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        );
+        .title(title_text)
+        .title_style(title_style);
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -58,11 +68,18 @@ fn draw_status_line(frame: &mut Frame, session: &Session, area: Rect) {
         SessionStatus::Exited(code) => format!("Exited ({code})"),
     };
 
-    let line = Line::from(vec![
+    let mut spans = vec![
         Span::styled(format!(" {indicator} "), Style::default().fg(color)),
         Span::styled(label, Style::default().fg(Color::DarkGray)),
-    ]);
-    frame.render_widget(Paragraph::new(line), area);
+    ];
+
+    let title = session.window_title();
+    if !title.is_empty() {
+        spans.push(Span::styled(" \u{2502} ", Style::default().fg(Color::DarkGray)));
+        spans.push(Span::styled(title, Style::default().fg(Color::DarkGray)));
+    }
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn draw_pinned_prompt(frame: &mut Frame, session: &Session, area: Rect) {
