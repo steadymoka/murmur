@@ -11,5 +11,11 @@
 *.swp
 *.swo
 
+# Claude Code
+.claude/settings.local.json
+
+# npm wrapper
+npm/bin/
+
 # Murmur runtime
 murmur.toml

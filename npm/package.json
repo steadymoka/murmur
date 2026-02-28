@@ -1,0 +1,40 @@
+{
+  "name": "murmur-tui",
+  "version": "0.0.0",
+  "description": "Terminal command center for AI coding sessions",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/steadymoka/murmur"
+  },
+  "homepage": "https://github.com/steadymoka/murmur",
+  "keywords": [
+    "tui",
+    "terminal",
+    "ai",
+    "claude",
+    "kanban"
+  ],
+  "bin": {
+    "murmur-tui": "run.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js"
+  },
+  "files": [
+    "install.js",
+    "run.js"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}
