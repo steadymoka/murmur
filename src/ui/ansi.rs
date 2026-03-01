@@ -43,7 +43,14 @@ pub fn clear_rows(stdout: &mut io::Stdout, from: u16, to: u16) {
 
 /// Render the PIN bar starting at `start_row` (1-indexed).
 /// Uses a left-bar chat style: ▎ line
-pub fn render_pin_bar(stdout: &mut io::Stdout, start_row: u16, cols: u16, pinned_prompt: &str) {
+/// `position` is Some((current_1based, total)) when navigating history.
+pub fn render_pin_bar(
+    stdout: &mut io::Stdout,
+    start_row: u16,
+    cols: u16,
+    pinned_prompt: &str,
+    position: Option<(usize, usize)>,
+) {
     save_cursor(stdout);
 
     if pinned_prompt.is_empty() {
@@ -55,7 +62,12 @@ pub fn render_pin_bar(stdout: &mut io::Stdout, start_row: u16, cols: u16, pinned
         )
         .ok();
     } else {
-        let available = (cols as usize).saturating_sub(4);
+        let indicator = match position {
+            Some((cur, total)) => format!("[{}/{}] ", cur, total),
+            None => String::new(),
+        };
+        let indicator_width = indicator.len();
+        let available = (cols as usize).saturating_sub(4 + indicator_width);
         let lines: Vec<&str> = pinned_prompt.split('\n').collect();
         for (i, line) in lines.iter().enumerate() {
             let row = start_row + i as u16;
@@ -68,12 +80,21 @@ pub fn render_pin_bar(stdout: &mut io::Stdout, start_row: u16, cols: u16, pinned
                 (*line).to_string()
             };
 
-            write!(
-                stdout,
-                "\x1b[36m \u{258e}\x1b[0m \x1b[33m{}\x1b[0m",
-                display
-            )
-            .ok();
+            if i == 0 && !indicator.is_empty() {
+                write!(
+                    stdout,
+                    "\x1b[36m \u{258e}\x1b[0m \x1b[90m{}\x1b[33m{}\x1b[0m",
+                    indicator, display
+                )
+                .ok();
+            } else {
+                write!(
+                    stdout,
+                    "\x1b[36m \u{258e}\x1b[0m \x1b[33m{}\x1b[0m",
+                    display
+                )
+                .ok();
+            }
         }
     }
 
@@ -97,7 +118,7 @@ pub fn render_hint_bar(
     if prefix_armed {
         write!(
             stdout,
-            "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m n: new  d: del  1-9: switch  q: quit \x1b[0m"
+            "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m n: new  d: del  []: pin  x: unpin  1-9: switch  q: quit \x1b[0m"
         )
         .ok();
     } else {

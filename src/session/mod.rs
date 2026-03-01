@@ -24,10 +24,13 @@ impl vt100::Callbacks for TitleTracker {
     }
 }
 
+const PIN_HISTORY_MAX: usize = 50;
+
 pub struct Session {
     pub name: String,
     pub cwd: PathBuf,
-    pub pinned_prompt: String,
+    pub pin_history: Vec<String>,
+    pub pin_index: Option<usize>,
     pub input_buffer: String,
     pub status: SessionStatus,
     pub was_alternate_screen: bool,
@@ -90,7 +93,8 @@ impl Session {
         Ok(Session {
             name,
             cwd,
-            pinned_prompt: String::new(),
+            pin_history: Vec::new(),
+            pin_index: None,
             input_buffer: String::new(),
             status: SessionStatus::Running,
             was_alternate_screen: false,
@@ -178,12 +182,78 @@ impl Session {
         }
     }
 
+    pub fn current_pin(&self) -> &str {
+        match self.pin_index {
+            Some(i) => self.pin_history.get(i).map(|s| s.as_str()).unwrap_or(""),
+            None => self.pin_history.last().map(|s| s.as_str()).unwrap_or(""),
+        }
+    }
+
+    /// Returns Some((1-based position, total)) when navigating history, None when at latest.
+    pub fn pin_position(&self) -> Option<(usize, usize)> {
+        self.pin_index.map(|i| (i + 1, self.pin_history.len()))
+    }
+
+    pub fn pin_prev(&mut self) -> bool {
+        if self.pin_history.is_empty() {
+            return false;
+        }
+        match self.pin_index {
+            None => {
+                if self.pin_history.len() >= 2 {
+                    self.pin_index = Some(self.pin_history.len() - 2);
+                    true
+                } else {
+                    false
+                }
+            }
+            Some(0) => false,
+            Some(i) => {
+                self.pin_index = Some(i - 1);
+                true
+            }
+        }
+    }
+
+    pub fn pin_next(&mut self) -> bool {
+        match self.pin_index {
+            None => false,
+            Some(i) if i + 1 >= self.pin_history.len() => {
+                self.pin_index = None;
+                true
+            }
+            Some(i) => {
+                self.pin_index = Some(i + 1);
+                true
+            }
+        }
+    }
+
+    pub fn pin_delete(&mut self) {
+        if self.pin_history.is_empty() {
+            return;
+        }
+        let remove_idx = self.pin_index.unwrap_or(self.pin_history.len() - 1);
+        self.pin_history.remove(remove_idx);
+        if self.pin_history.is_empty() {
+            self.pin_index = None;
+        } else if let Some(i) = self.pin_index {
+            if i >= self.pin_history.len() {
+                self.pin_index = None;
+            }
+        }
+    }
+
     pub fn track_input(&mut self, c: char) {
         match c {
             '\r' => {
                 let trimmed = self.input_buffer.trim().to_string();
                 if !trimmed.is_empty() {
-                    self.pinned_prompt = trimmed;
+                    self.pin_history.push(trimmed);
+                    if self.pin_history.len() > PIN_HISTORY_MAX {
+                        self.pin_history.remove(0);
+                    }
+                    self.pin_index = None;
                 }
                 self.input_buffer.clear();
             }

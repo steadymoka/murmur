@@ -51,7 +51,7 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
     let session_count = app.sessions.len();
     if let Some(session) = app.sessions.get_mut(idx) {
         let is_ai = session.is_ai_tool();
-        app.bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
+        app.bar_rows = focus_bar_rows(session.current_pin(), is_ai);
         let bar_rows = app.bar_rows;
 
         let term_rows = rows.saturating_sub(bar_rows);
@@ -69,7 +69,7 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
 
         if is_ai {
             let pin_start = rows - bar_rows + 1;
-            ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
+            ansi::render_pin_bar(stdout, pin_start, cols, session.current_pin(), session.pin_position());
         }
         let hint_row = rows;
         ansi::render_hint_bar(
@@ -117,7 +117,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
             }
 
             let is_ai = session.is_ai_tool();
-            let new_bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
+            let new_bar_rows = focus_bar_rows(session.current_pin(), is_ai);
             if new_bar_rows != app.bar_rows {
                 let old_bar_start = rows.saturating_sub(app.bar_rows) + 1;
                 let new_bar_start = rows.saturating_sub(new_bar_rows) + 1;
@@ -134,7 +134,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                 let bar_rows = app.bar_rows;
                 if is_ai {
                     let pin_start = rows - bar_rows + 1;
-                    ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
+                    ansi::render_pin_bar(stdout, pin_start, cols, session.current_pin(), session.pin_position());
                 }
                 ansi::render_hint_bar(
                     stdout,
@@ -186,7 +186,8 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                                 stdout,
                                 pin_start,
                                 new_cols,
-                                &session.pinned_prompt,
+                                session.current_pin(),
+                                session.pin_position(),
                             );
                         }
                         ansi::render_hint_bar(
@@ -211,6 +212,28 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
 fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed: bool) {
     let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
     ansi::render_hint_bar(stdout, app.rows, prefix_armed, &title, idx, app.sessions.len());
+}
+
+/// Re-render the pin bar, handling bar_rows changes (e.g. multiline ↔ singleline).
+fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
+    if !app.sessions[idx].is_ai_tool() {
+        return;
+    }
+    let new_bar_rows = focus_bar_rows(app.sessions[idx].current_pin(), true);
+    if new_bar_rows != app.bar_rows {
+        let old_bar_start = app.rows.saturating_sub(app.bar_rows) + 1;
+        let new_bar_start = app.rows.saturating_sub(new_bar_rows) + 1;
+        ansi::clear_rows(stdout, old_bar_start.min(new_bar_start), app.rows);
+        app.bar_rows = new_bar_rows;
+        let term_rows = app.rows.saturating_sub(new_bar_rows);
+        let _ = app.sessions[idx].resize(term_rows, app.cols);
+        if !app.sessions[idx].screen().alternate_screen() {
+            ansi::set_scroll_region(stdout, 1, term_rows);
+        }
+    }
+    let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
+    let session = &app.sessions[idx];
+    ansi::render_pin_bar(stdout, pin_start, app.cols, session.current_pin(), session.pin_position());
 }
 
 /// Handle a key event in Focus mode.
@@ -264,6 +287,34 @@ fn handle_focus_key(
                 }
                 return Ok(());
             }
+            KeyCode::Char('[') => {
+                if let Some(session) = app.sessions.get_mut(idx) {
+                    if session.pin_prev() && session.is_ai_tool() {
+                        refresh_pin_bar(stdout, app, idx);
+                    }
+                }
+                refresh_hint_bar(stdout, app, idx, false);
+                return Ok(());
+            }
+            KeyCode::Char(']') => {
+                if let Some(session) = app.sessions.get_mut(idx) {
+                    if session.pin_next() && session.is_ai_tool() {
+                        refresh_pin_bar(stdout, app, idx);
+                    }
+                }
+                refresh_hint_bar(stdout, app, idx, false);
+                return Ok(());
+            }
+            KeyCode::Char('x') => {
+                if let Some(session) = app.sessions.get_mut(idx) {
+                    session.pin_delete();
+                    if session.is_ai_tool() {
+                        refresh_pin_bar(stdout, app, idx);
+                    }
+                }
+                refresh_hint_bar(stdout, app, idx, false);
+                return Ok(());
+            }
             KeyCode::Char('q') => {
                 app.should_quit = true;
                 return Ok(());
@@ -297,7 +348,7 @@ fn handle_focus_key(
 
         if key.code == KeyCode::Enter {
             let is_ai = session.is_ai_tool();
-            let new_bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
+            let new_bar_rows = focus_bar_rows(session.current_pin(), is_ai);
             if new_bar_rows != app.bar_rows {
                 let old_bar_start = app.rows.saturating_sub(app.bar_rows) + 1;
                 let new_bar_start = app.rows.saturating_sub(new_bar_rows) + 1;
@@ -320,7 +371,7 @@ fn handle_focus_key(
             }
             if is_ai {
                 let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
-                ansi::render_pin_bar(stdout, pin_start, app.cols, &session.pinned_prompt);
+                ansi::render_pin_bar(stdout, pin_start, app.cols, session.current_pin(), session.pin_position());
             }
         }
     }

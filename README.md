@@ -12,7 +12,7 @@ Murmur is a lightweight terminal multiplexer built for developers who work with 
 ## Features
 
 - **Prefix-key session management** — Create, switch, and delete sessions without leaving your terminal (`Ctrl+\`)
-- **Prompt pinning** — Automatically captures your last command as a persistent context bar
+- **Prompt pinning with history** — Automatically captures commands as a persistent context bar, with navigable history
 - **Claude Code detection** — Recognizes AI coding sessions and shows a pin bar with session context
 - **PTY passthrough** — Zero-interference raw terminal I/O with full ANSI support
 - **Window title tracking** — Captures and displays terminal window titles per session
@@ -45,6 +45,9 @@ All input is forwarded to the PTY. Use `Ctrl+\` as a prefix key to access comman
 | --- | --- |
 | `Ctrl+\` `n` | New session |
 | `Ctrl+\` `d` | Delete current session |
+| `Ctrl+\` `[` | Previous pin (older) |
+| `Ctrl+\` `]` | Next pin (newer) |
+| `Ctrl+\` `x` | Delete current pin from history |
 | `Ctrl+\` `1`–`9` | Switch to session N |
 | `Ctrl+\` `q` | Quit |
 
