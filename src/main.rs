@@ -77,7 +77,13 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
 
         if is_ai {
             let pin_start = rows - bar_rows + 1;
-            ansi::render_pin_bar(stdout, pin_start, cols, session.current_pin(), session.pin_position());
+            ansi::render_pin_bar(
+                stdout,
+                pin_start,
+                cols,
+                session.current_pin(),
+                session.pin_position(),
+            );
         }
         let hint_row = rows;
         ansi::render_hint_bar(
@@ -142,7 +148,13 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                 let bar_rows = app.bar_rows;
                 if is_ai {
                     let pin_start = rows - bar_rows + 1;
-                    ansi::render_pin_bar(stdout, pin_start, cols, session.current_pin(), session.pin_position());
+                    ansi::render_pin_bar(
+                        stdout,
+                        pin_start,
+                        cols,
+                        session.current_pin(),
+                        session.pin_position(),
+                    );
                 }
                 ansi::render_hint_bar(
                     stdout,
@@ -218,8 +230,19 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
 
 /// Render the hint bar with current session info (title + index).
 fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed: bool) {
-    let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
-    ansi::render_hint_bar(stdout, app.rows, prefix_armed, &title, idx, app.sessions.len());
+    let title = app
+        .sessions
+        .get(idx)
+        .map(|s| s.window_title())
+        .unwrap_or_default();
+    ansi::render_hint_bar(
+        stdout,
+        app.rows,
+        prefix_armed,
+        &title,
+        idx,
+        app.sessions.len(),
+    );
 }
 
 /// Re-render the pin bar, handling bar_rows changes (e.g. multiline ↔ singleline).
@@ -241,13 +264,23 @@ fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
     }
     let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
     let session = &app.sessions[idx];
-    ansi::render_pin_bar(stdout, pin_start, app.cols, session.current_pin(), session.pin_position());
+    ansi::render_pin_bar(
+        stdout,
+        pin_start,
+        app.cols,
+        session.current_pin(),
+        session.pin_position(),
+    );
 }
 
 /// Move pin cursor forward (next) or backward (prev), refreshing the pin bar on change.
 fn navigate_pin(stdout: &mut io::Stdout, app: &mut App, idx: usize, forward: bool) {
     if let Some(session) = app.sessions.get_mut(idx) {
-        let changed = if forward { session.pin_next() } else { session.pin_prev() };
+        let changed = if forward {
+            session.pin_next()
+        } else {
+            session.pin_prev()
+        };
         if changed && session.is_ai_tool() {
             refresh_pin_bar(stdout, app, idx);
         }
@@ -339,8 +372,14 @@ fn handle_focus_key(
     // Direct pin navigation: Ctrl+[ (prev) / Ctrl+] (next)
     if key.modifiers.contains(KeyModifiers::CONTROL) {
         match key.code {
-            KeyCode::Char('[') => { navigate_pin(stdout, app, idx, false); return Ok(()); }
-            KeyCode::Char(']') => { navigate_pin(stdout, app, idx, true); return Ok(()); }
+            KeyCode::Char('[') => {
+                navigate_pin(stdout, app, idx, false);
+                return Ok(());
+            }
+            KeyCode::Char(']') => {
+                navigate_pin(stdout, app, idx, true);
+                return Ok(());
+            }
             _ => {}
         }
     }
@@ -380,7 +419,13 @@ fn handle_focus_key(
             }
             if is_ai {
                 let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
-                ansi::render_pin_bar(stdout, pin_start, app.cols, session.current_pin(), session.pin_position());
+                ansi::render_pin_bar(
+                    stdout,
+                    pin_start,
+                    app.cols,
+                    session.current_pin(),
+                    session.pin_position(),
+                );
             }
         }
     }

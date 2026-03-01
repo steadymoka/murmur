@@ -56,11 +56,7 @@ pub fn render_pin_bar(
     if pinned_prompt.is_empty() {
         move_to(stdout, start_row, 1);
         clear_line(stdout);
-        write!(
-            stdout,
-            "\x1b[90m \u{258e} (no prompt)\x1b[0m"
-        )
-        .ok();
+        write!(stdout, "\x1b[90m \u{258e} (no prompt)\x1b[0m").ok();
     } else {
         let indicator = match position {
             Some((cur, total)) => format!("[{}/{}] ", cur, total),
