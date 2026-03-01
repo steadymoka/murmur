@@ -6,12 +6,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum SessionStatus {
-    Running,
-    Exited(u32),
-}
-
 struct TitleTracker {
     title: Arc<Mutex<String>>,
 }
@@ -27,12 +21,10 @@ impl vt100::Callbacks for TitleTracker {
 const PIN_HISTORY_MAX: usize = 50;
 
 pub struct Session {
-    pub name: String,
     pub cwd: PathBuf,
     pub pin_history: Vec<String>,
     pub pin_index: Option<usize>,
     pub input_buffer: String,
-    pub status: SessionStatus,
     pub was_alternate_screen: bool,
     window_title: Arc<Mutex<String>>,
     parser: vt100::Parser<TitleTracker>,
@@ -44,11 +36,6 @@ pub struct Session {
 
 impl Session {
     pub fn spawn(cwd: PathBuf, rows: u16, cols: u16) -> Result<Self> {
-        let name = cwd
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| cwd.to_string_lossy().to_string());
-
         let pty_system = portable_pty::native_pty_system();
         let pair = pty_system.openpty(PtySize {
             rows,
@@ -91,12 +78,10 @@ impl Session {
         let parser = vt100::Parser::new_with_callbacks(rows, cols, 0, tracker);
 
         Ok(Session {
-            name,
             cwd,
             pin_history: Vec::new(),
             pin_index: None,
             input_buffer: String::new(),
-            status: SessionStatus::Running,
             was_alternate_screen: false,
             window_title: title_arc,
             parser,
@@ -168,18 +153,6 @@ impl Session {
         let title = self.window_title();
         let lower = title.to_ascii_lowercase();
         lower.contains("claude") || lower.contains("codex")
-    }
-
-    pub fn ai_tool_name(&self) -> &'static str {
-        let title = self.window_title();
-        let lower = title.to_ascii_lowercase();
-        if lower.contains("claude") {
-            "Claude"
-        } else if lower.contains("codex") {
-            "Codex"
-        } else {
-            "AI"
-        }
     }
 
     pub fn current_pin(&self) -> &str {
