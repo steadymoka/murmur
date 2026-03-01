@@ -5,16 +5,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021_edition-orange.svg)](https://www.rust-lang.org/)
 
-Murmur is a lightweight terminal multiplexer built for developers who work with AI coding agents. It keeps your shell sessions organized in a dual-mode interface — a raw PTY passthrough for hands-on work, and a TUI overview for switching between sessions at a glance.
+Murmur is a lightweight terminal multiplexer built for developers who work with AI coding agents. It provides a raw PTY passthrough with prefix-key session management — no mode switching, no screen takeover.
 
 <!-- screenshot -->
 
 ## Features
 
-- **Dual-mode interface** — Focus mode for full terminal passthrough, Overview mode for session management
+- **Prefix-key session management** — Create, switch, and delete sessions without leaving your terminal (`Ctrl+\`)
 - **Prompt pinning** — Automatically captures your last command as a persistent context bar
-- **Claude Code detection** — Recognizes Claude sessions and marks them with a visual indicator
-- **Session grid** — Responsive tile layout with live terminal previews
+- **Claude Code detection** — Recognizes AI coding sessions and shows a pin bar with session context
 - **PTY passthrough** — Zero-interference raw terminal I/O with full ANSI support
 - **Window title tracking** — Captures and displays terminal window titles per session
 - **Alternate screen aware** — Correctly handles full-screen TUI apps like vim and htop
@@ -36,40 +35,24 @@ cargo build --release
 ./target/release/murmur
 ```
 
-Murmur launches in Focus mode with a shell session in the current directory. Two persistent bars appear at the bottom — a pin bar showing your last command, and a hint bar with keybinding reminders.
+Murmur launches with a shell session in the current directory. A hint bar at the bottom shows available prefix keys. During AI coding sessions, a pin bar appears above it with session context.
 
 ## Keybindings
-
-### Focus Mode
 
 All input is forwarded to the PTY. Use `Ctrl+\` as a prefix key to access commands.
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+\` `o` | Switch to Overview mode |
+| `Ctrl+\` `n` | New session |
+| `Ctrl+\` `d` | Delete current session |
+| `Ctrl+\` `1`–`9` | Switch to session N |
 | `Ctrl+\` `q` | Quit |
-
-### Overview Mode
-
-| Key | Action |
-| --- | --- |
-| `j` / `k` / `h` / `l` | Navigate session grid (vim-style) |
-| Arrow keys | Navigate session grid |
-| `1`–`9` | Jump to session N |
-| `Enter` | Focus selected session |
-| `n` | New session (enter directory path) |
-| `d` | Delete selected session |
-| `q` | Quit |
 
 ## How It Works
 
-Murmur operates as a state machine with two modes:
+Murmur attaches your terminal to a PTY session. Output is written directly to stdout through a scroll region that reserves space for persistent context bars. A VT100 parser runs in parallel to track screen state, window titles, and input for prompt pinning.
 
-**Focus** attaches your terminal to a PTY session. Output is written directly to stdout through a scroll region that reserves space for persistent context bars. A VT100 parser runs in parallel to track screen state, window titles, and input for prompt pinning.
-
-**Overview** enters an alternate screen and renders a responsive grid of session tiles using ratatui. Each tile shows the session status, window title, pinned prompt, and a live terminal preview. PTY output from all sessions continues to be processed in the background.
-
-The prefix key (`Ctrl+\`) is the only input murmur intercepts in Focus mode — everything else passes through untouched.
+The prefix key (`Ctrl+\`) is the only input murmur intercepts — everything else passes through untouched. Session management (create, delete, switch) is handled entirely through prefix key combinations.
 
 ## Configuration
 
@@ -85,7 +68,7 @@ args = ["--project", "."]
 
 | Field | Description |
 | --- | --- |
-| `name` | Project name displayed in Overview |
+| `name` | Project name displayed in hint bar |
 | `agent.command` | Shell or command to run (default: `$SHELL`) |
 | `agent.args` | Arguments passed to the command |
 
