@@ -87,6 +87,8 @@ pub fn render_hint_bar(
     row: u16,
     prefix_armed: bool,
     window_title: &str,
+    session_index: usize,
+    session_count: usize,
 ) {
     save_cursor(stdout);
     move_to(stdout, row, 1);
@@ -95,19 +97,29 @@ pub fn render_hint_bar(
     if prefix_armed {
         write!(
             stdout,
-            "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m o: overview  q: quit \x1b[0m"
+            "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m n: new  d: del  1-9: switch  q: quit \x1b[0m"
         )
         .ok();
     } else {
+        if session_count > 1 {
+            write!(
+                stdout,
+                "\x1b[36m[{}/{}]\x1b[0m ",
+                session_index + 1,
+                session_count
+            )
+            .ok();
+        }
+
+        if !window_title.is_empty() {
+            write!(stdout, "\x1b[90m{}\x1b[0m", window_title).ok();
+        }
+
         write!(
             stdout,
-            "\x1b[36m Ctrl+\\\x1b[90m \u{2192} \x1b[36mo\x1b[0m: overview"
+            "\x1b[90m \u{2502} \x1b[36mCtrl+\\\x1b[90m \u{2192} n/d/q\x1b[0m"
         )
         .ok();
-    }
-
-    if !window_title.is_empty() {
-        write!(stdout, "\x1b[90m  \u{2502} {}\x1b[0m", window_title).ok();
     }
 
     restore_cursor(stdout);

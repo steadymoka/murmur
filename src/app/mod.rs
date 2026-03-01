@@ -2,10 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
-use ratatui::Frame;
 
 use crate::session::Session;
-use crate::ui;
 
 /// Compute how many rows the bottom bar area occupies (PIN lines + hint bar).
 pub fn focus_bar_rows(pinned_prompt: &str, is_ai_tool: bool) -> u16 {
@@ -20,29 +18,14 @@ pub fn focus_bar_rows(pinned_prompt: &str, is_ai_tool: bool) -> u16 {
     pin_lines + 1
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum AppState {
-    Overview,
-    Focus(usize),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum InputMode {
-    Normal,
-    NewSession(String),
-}
-
 pub struct App {
-    pub state: AppState,
     pub sessions: Vec<Session>,
-    pub selected: usize,
-    pub input_mode: InputMode,
     pub should_quit: bool,
-    pub error_message: Option<String>,
     pub prefix_armed: bool,
     pub bar_rows: u16,
     pub rows: u16,
     pub cols: u16,
+    pub focus_idx: usize,
 }
 
 impl App {
@@ -52,164 +35,40 @@ impl App {
         let session = Session::spawn(cwd, term_rows, cols)?;
 
         Ok(Self {
-            state: AppState::Focus(0),
             sessions: vec![session],
-            selected: 0,
-            input_mode: InputMode::Normal,
             should_quit: false,
-            error_message: None,
             prefix_armed: false,
             bar_rows,
             rows,
             cols,
+            focus_idx: 0,
         })
     }
 
-    pub fn draw_overview(&self, frame: &mut Frame) {
-        ui::overview::draw(frame, self);
+    pub fn create_session(&mut self, cwd: PathBuf) -> Result<usize> {
+        let term_rows = self.rows.saturating_sub(self.bar_rows);
+        let session = Session::spawn(cwd, term_rows, self.cols)?;
+        self.sessions.push(session);
+        let idx = self.sessions.len() - 1;
+        Ok(idx)
     }
 
-    pub fn handle_overview_key(&mut self, key: KeyEvent) -> Result<()> {
-        match &self.input_mode {
-            InputMode::NewSession(_) => self.handle_new_session_input(key),
-            InputMode::Normal => self.handle_overview_normal(key),
-        }
-    }
-
-    fn handle_overview_normal(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Char('q') => {
-                self.should_quit = true;
-            }
-            KeyCode::Char('n') => {
-                self.input_mode = InputMode::NewSession(String::new());
-                self.error_message = None;
-            }
-            KeyCode::Enter => {
-                if !self.sessions.is_empty() {
-                    self.state = AppState::Focus(self.selected);
-                }
-            }
-            KeyCode::Char('d') => {
-                if !self.sessions.is_empty() {
-                    self.sessions.remove(self.selected);
-                    if self.selected > 0 && self.selected >= self.sessions.len() {
-                        self.selected = self.sessions.len().saturating_sub(1);
-                    }
-                }
-            }
-            KeyCode::Char('j') | KeyCode::Down => self.move_selection_down(),
-            KeyCode::Char('k') | KeyCode::Up => self.move_selection_up(),
-            KeyCode::Char('h') | KeyCode::Left => self.move_selection_left(),
-            KeyCode::Char('l') | KeyCode::Right => self.move_selection_right(),
-            KeyCode::Char(c @ '1'..='9') => {
-                let idx = (c as usize) - ('1' as usize);
-                if idx < self.sessions.len() {
-                    self.selected = idx;
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    fn handle_new_session_input(&mut self, key: KeyEvent) -> Result<()> {
-        match key.code {
-            KeyCode::Esc => {
-                self.input_mode = InputMode::Normal;
-                self.error_message = None;
-            }
-            KeyCode::Enter => {
-                if let InputMode::NewSession(ref path_str) = self.input_mode {
-                    let expanded = shellexpand::tilde(path_str).to_string();
-                    let path = PathBuf::from(&expanded);
-                    if path.is_dir() {
-                        let term_rows = self.rows.saturating_sub(self.bar_rows);
-                        match Session::spawn(path, term_rows, self.cols) {
-                            Ok(session) => {
-                                self.sessions.push(session);
-                                self.selected = self.sessions.len() - 1;
-                                self.input_mode = InputMode::Normal;
-                                self.error_message = None;
-                            }
-                            Err(e) => {
-                                self.error_message =
-                                    Some(format!("Failed to spawn session: {e}"));
-                            }
-                        }
-                    } else {
-                        self.error_message =
-                            Some(format!("Not a valid directory: {expanded}"));
-                    }
-                }
-            }
-            KeyCode::Char(c) => {
-                if let InputMode::NewSession(ref mut s) = self.input_mode {
-                    s.push(c);
-                }
-            }
-            KeyCode::Backspace => {
-                if let InputMode::NewSession(ref mut s) = self.input_mode {
-                    s.pop();
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    }
-
-    pub fn process_all_sessions(&mut self) {
-        for session in &mut self.sessions {
-            session.process_pty_output();
-        }
-    }
-
-    fn grid_cols(&self) -> usize {
-        let n = self.sessions.len();
-        match n {
-            0 | 1 => 1,
-            2 => 2,
-            3 | 4 => 2,
-            5 | 6 => 3,
-            _ => 3,
-        }
-    }
-
-    fn move_selection_down(&mut self) {
+    pub fn delete_current_session(&mut self) {
         if self.sessions.is_empty() {
             return;
         }
-        let cols = self.grid_cols();
-        let next = self.selected + cols;
-        if next < self.sessions.len() {
-            self.selected = next;
-        }
-    }
-
-    fn move_selection_up(&mut self) {
+        self.sessions.remove(self.focus_idx);
         if self.sessions.is_empty() {
+            self.should_quit = true;
             return;
         }
-        let cols = self.grid_cols();
-        if self.selected >= cols {
-            self.selected -= cols;
+        if self.focus_idx >= self.sessions.len() {
+            self.focus_idx = self.sessions.len() - 1;
         }
     }
 
-    fn move_selection_right(&mut self) {
-        if self.sessions.is_empty() {
-            return;
-        }
-        let next = self.selected + 1;
-        if next < self.sessions.len() {
-            self.selected = next;
-        }
-    }
-
-    fn move_selection_left(&mut self) {
-        if self.selected > 0 {
-            self.selected -= 1;
-        }
+    pub fn session_count(&self) -> usize {
+        self.sessions.len()
     }
 
     pub fn poll_event(timeout: std::time::Duration) -> Result<Option<Event>> {
