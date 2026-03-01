@@ -13,12 +13,13 @@ pub fn draw(frame: &mut Frame, session: &Session, area: Rect, selected: bool) {
     } else {
         Color::DarkGray
     };
-    let title_text = if session.is_claude_code() {
-        format!(" {} \u{2726} Claude ", session.name)
+    let is_ai = session.is_ai_tool();
+    let title_text = if is_ai {
+        format!(" {} \u{2726} {} ", session.name, session.ai_tool_name())
     } else {
         format!(" {} ", session.name)
     };
-    let title_style = if session.is_claude_code() {
+    let title_style = if is_ai {
         Style::default()
             .fg(Color::LightMagenta)
             .add_modifier(Modifier::BOLD)
@@ -40,16 +41,27 @@ pub fn draw(frame: &mut Frame, session: &Session, area: Rect, selected: bool) {
         return;
     }
 
-    let chunks = Layout::vertical([
-        Constraint::Length(1), // status line
-        Constraint::Length(2), // pinned prompt
-        Constraint::Min(1),   // terminal preview
-    ])
-    .split(inner);
+    if is_ai {
+        let chunks = Layout::vertical([
+            Constraint::Length(1), // status line
+            Constraint::Length(2), // pinned prompt
+            Constraint::Min(1),   // terminal preview
+        ])
+        .split(inner);
 
-    draw_status_line(frame, session, chunks[0]);
-    draw_pinned_prompt(frame, session, chunks[1]);
-    draw_terminal_preview(frame, session, chunks[2]);
+        draw_status_line(frame, session, chunks[0]);
+        draw_pinned_prompt(frame, session, chunks[1]);
+        draw_terminal_preview(frame, session, chunks[2]);
+    } else {
+        let chunks = Layout::vertical([
+            Constraint::Length(1), // status line
+            Constraint::Min(1),   // terminal preview (expanded)
+        ])
+        .split(inner);
+
+        draw_status_line(frame, session, chunks[0]);
+        draw_terminal_preview(frame, session, chunks[1]);
+    }
 }
 
 fn draw_status_line(frame: &mut Frame, session: &Session, area: Rect) {

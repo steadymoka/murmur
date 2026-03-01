@@ -160,10 +160,22 @@ impl Session {
             .unwrap_or_default()
     }
 
-    pub fn is_claude_code(&self) -> bool {
+    pub fn is_ai_tool(&self) -> bool {
         let title = self.window_title();
         let lower = title.to_ascii_lowercase();
-        lower.contains("claude")
+        lower.contains("claude") || lower.contains("codex")
+    }
+
+    pub fn ai_tool_name(&self) -> &'static str {
+        let title = self.window_title();
+        let lower = title.to_ascii_lowercase();
+        if lower.contains("claude") {
+            "Claude"
+        } else if lower.contains("codex") {
+            "Codex"
+        } else {
+            "AI"
+        }
     }
 
     pub fn track_input(&mut self, c: char) {

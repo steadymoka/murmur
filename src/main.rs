@@ -67,7 +67,8 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
 
     if let AppState::Focus(idx) = app.state {
         if let Some(session) = app.sessions.get_mut(idx) {
-            app.bar_rows = focus_bar_rows(&session.pinned_prompt);
+            let is_ai = session.is_ai_tool();
+            app.bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
             let bar_rows = app.bar_rows;
 
             let term_rows = rows.saturating_sub(bar_rows);
@@ -87,9 +88,11 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
             }
 
             // Render bars
-            let pin_start = rows - bar_rows + 1;
+            if is_ai {
+                let pin_start = rows - bar_rows + 1;
+                ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
+            }
             let hint_row = rows;
-            ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
             ansi::render_hint_bar(stdout, hint_row, app.prefix_armed, &session.window_title());
 
             // Restore cursor to PTY position
@@ -129,11 +132,28 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                 }
             }
 
+            // Detect AI tool transition (title may change via OSC sequences in PTY output)
+            let is_ai = session.is_ai_tool();
+            let new_bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
+            if new_bar_rows != app.bar_rows {
+                let old_bar_start = rows.saturating_sub(app.bar_rows) + 1;
+                let new_bar_start = rows.saturating_sub(new_bar_rows) + 1;
+                ansi::clear_rows(stdout, old_bar_start.min(new_bar_start), rows);
+                app.bar_rows = new_bar_rows;
+                let term_rows = rows.saturating_sub(new_bar_rows);
+                let _ = session.resize(term_rows, cols);
+                if !is_alt {
+                    ansi::set_scroll_region(stdout, 1, term_rows);
+                }
+            }
+
             // Re-render bars after PTY output to keep them visible
             if !is_alt {
                 let bar_rows = app.bar_rows;
-                let pin_start = rows - bar_rows + 1;
-                ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
+                if is_ai {
+                    let pin_start = rows - bar_rows + 1;
+                    ansi::render_pin_bar(stdout, pin_start, cols, &session.pinned_prompt);
+                }
                 ansi::render_hint_bar(stdout, rows, app.prefix_armed, &session.window_title());
                 // Restore cursor to where PTY left it
                 let (cr, cc) = session.screen().cursor_position();
@@ -171,17 +191,18 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
 
                     if !session.screen().alternate_screen() {
                         ansi::set_scroll_region(stdout, 1, term_rows);
-                        let pin_start = new_rows - bar_rows + 1;
-                        let hint_row = new_rows;
-                        ansi::render_pin_bar(
-                            stdout,
-                            pin_start,
-                            new_cols,
-                            &session.pinned_prompt,
-                        );
+                        if session.is_ai_tool() {
+                            let pin_start = new_rows - bar_rows + 1;
+                            ansi::render_pin_bar(
+                                stdout,
+                                pin_start,
+                                new_cols,
+                                &session.pinned_prompt,
+                            );
+                        }
                         ansi::render_hint_bar(
                             stdout,
-                            hint_row,
+                            new_rows,
                             app.prefix_armed,
                             &session.window_title(),
                         );
@@ -258,7 +279,8 @@ fn handle_focus_key(
 
         // Update bars if enter was pressed (pinned_prompt may have changed)
         if key.code == KeyCode::Enter {
-            let new_bar_rows = focus_bar_rows(&session.pinned_prompt);
+            let is_ai = session.is_ai_tool();
+            let new_bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
             if new_bar_rows != app.bar_rows {
                 // Clear old bar area
                 let old_bar_start = app.rows.saturating_sub(app.bar_rows) + 1;
@@ -278,8 +300,10 @@ fn handle_focus_key(
                     &session.window_title(),
                 );
             }
-            let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
-            ansi::render_pin_bar(stdout, pin_start, app.cols, &session.pinned_prompt);
+            if is_ai {
+                let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
+                ansi::render_pin_bar(stdout, pin_start, app.cols, &session.pinned_prompt);
+            }
         }
     }
 

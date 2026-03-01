@@ -8,7 +8,10 @@ use crate::session::Session;
 use crate::ui;
 
 /// Compute how many rows the bottom bar area occupies (PIN lines + hint bar).
-pub fn focus_bar_rows(pinned_prompt: &str) -> u16 {
+pub fn focus_bar_rows(pinned_prompt: &str, is_ai_tool: bool) -> u16 {
+    if !is_ai_tool {
+        return 1; // hint bar only
+    }
     let pin_lines = if pinned_prompt.is_empty() {
         1
     } else {
@@ -44,7 +47,7 @@ pub struct App {
 
 impl App {
     pub fn new(cwd: PathBuf, rows: u16, cols: u16) -> Result<Self> {
-        let bar_rows = focus_bar_rows("");
+        let bar_rows = focus_bar_rows("", false);
         let term_rows = rows.saturating_sub(bar_rows);
         let session = Session::spawn(cwd, term_rows, cols)?;
 
