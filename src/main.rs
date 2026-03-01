@@ -48,7 +48,7 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
     let cols = app.cols;
     let idx = app.focus_idx;
 
-    let session_count = app.session_count();
+    let session_count = app.sessions.len();
     if let Some(session) = app.sessions.get_mut(idx) {
         let is_ai = session.is_ai_tool();
         app.bar_rows = focus_bar_rows(&session.pinned_prompt, is_ai);
@@ -93,7 +93,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
     let cols = app.cols;
 
     // 1. Drain raw PTY output from the focused session and write to stdout
-    let session_count = app.session_count();
+    let session_count = app.sessions.len();
     if let Some(session) = app.sessions.get_mut(idx) {
         let chunks = session.drain_raw_chunks();
         if !chunks.is_empty() {
@@ -172,7 +172,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
             Event::Resize(new_cols, new_rows) => {
                 app.rows = new_rows;
                 app.cols = new_cols;
-                let sc = app.session_count();
+                let session_count = app.sessions.len();
                 if let Some(session) = app.sessions.get_mut(idx) {
                     let bar_rows = app.bar_rows;
                     let term_rows = new_rows.saturating_sub(bar_rows);
@@ -195,7 +195,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                             app.prefix_armed,
                             &session.window_title(),
                             idx,
-                            sc,
+                            session_count,
                         );
                     }
                 }
@@ -205,6 +205,12 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
     }
 
     Ok(())
+}
+
+/// Render the hint bar with current session info (title + index).
+fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed: bool) {
+    let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
+    ansi::render_hint_bar(stdout, app.rows, prefix_armed, &title, idx, app.sessions.len());
 }
 
 /// Handle a key event in Focus mode.
@@ -219,8 +225,7 @@ fn handle_focus_key(
 
     if is_prefix {
         app.prefix_armed = true;
-        let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
-        ansi::render_hint_bar(stdout, app.rows, true, &title, idx, app.sessions.len());
+        refresh_hint_bar(stdout, app, idx, true);
         return Ok(());
     }
 
@@ -236,8 +241,7 @@ fn handle_focus_key(
                         setup_focus_mode(stdout, app);
                     }
                     Err(_) => {
-                        let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
-                        ansi::render_hint_bar(stdout, app.rows, false, &title, idx, app.sessions.len());
+                        refresh_hint_bar(stdout, app, idx, false);
                     }
                 }
                 return Ok(());
@@ -252,12 +256,11 @@ fn handle_focus_key(
             }
             KeyCode::Char(c @ '1'..='9') => {
                 let target = (c as usize) - ('1' as usize);
-                if target < app.session_count() && target != idx {
+                if target < app.sessions.len() && target != idx {
                     app.focus_idx = target;
                     setup_focus_mode(stdout, app);
                 } else {
-                    let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
-                    ansi::render_hint_bar(stdout, app.rows, false, &title, idx, app.sessions.len());
+                    refresh_hint_bar(stdout, app, idx, false);
                 }
                 return Ok(());
             }
@@ -276,15 +279,14 @@ fn handle_focus_key(
                         session.write_bytes(&bytes)?;
                     }
                 }
-                let title = app.sessions.get(idx).map(|s| s.window_title()).unwrap_or_default();
-                ansi::render_hint_bar(stdout, app.rows, false, &title, idx, app.sessions.len());
+                refresh_hint_bar(stdout, app, idx, false);
                 return Ok(());
             }
         }
     }
 
     // Normal key → forward to PTY
-    let session_count = app.session_count();
+    let session_count = app.sessions.len();
     if let Some(session) = app.sessions.get_mut(idx) {
         if let Some(bytes) = key_event_to_bytes(&key) {
             if let Some(tb) = key_event_to_track_char(&key) {

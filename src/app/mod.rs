@@ -67,10 +67,6 @@ impl App {
         }
     }
 
-    pub fn session_count(&self) -> usize {
-        self.sessions.len()
-    }
-
     pub fn poll_event(timeout: std::time::Duration) -> Result<Option<Event>> {
         if event::poll(timeout)? {
             Ok(Some(event::read()?))
