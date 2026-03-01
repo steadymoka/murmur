@@ -43,13 +43,15 @@ All input is forwarded to the PTY. Use `Ctrl+\` as a prefix key to access comman
 
 | Key | Action |
 | --- | --- |
+| `Ctrl+[` | Previous pin (older) |
+| `Ctrl+]` | Next pin (newer) |
 | `Ctrl+\` `n` | New session |
 | `Ctrl+\` `d` | Delete current session |
-| `Ctrl+\` `[` | Previous pin (older) |
-| `Ctrl+\` `]` | Next pin (newer) |
 | `Ctrl+\` `x` | Delete current pin from history |
 | `Ctrl+\` `1`–`9` | Switch to session N |
 | `Ctrl+\` `q` | Quit |
+
+> `Ctrl+[` requires a terminal that supports [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (iTerm2, Alacritty, Kitty, WezTerm, etc.). On unsupported terminals, `Ctrl+[` is treated as ESC.
 
 ## How It Works
 

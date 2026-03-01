@@ -6,7 +6,10 @@ use std::io::{self, Write};
 use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyModifiers};
+use crossterm::event::{
+    Event, KeyCode, KeyModifiers, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use app::{focus_bar_rows, key_event_to_bytes, key_event_to_track_char, App};
@@ -16,6 +19,10 @@ fn main() -> Result<()> {
     enable_raw_mode()?;
 
     let mut stdout = io::stdout();
+    let _ = crossterm::execute!(
+        stdout,
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+    );
     let cwd = std::env::current_dir()?;
     let (cols, rows) = crossterm::terminal::size()?;
 
@@ -34,6 +41,7 @@ fn main() -> Result<()> {
     // Cleanup
     ansi::reset_scroll_region(&mut stdout);
     crossterm::execute!(stdout, crossterm::cursor::Show)?;
+    let _ = crossterm::execute!(stdout, PopKeyboardEnhancementFlags);
     disable_raw_mode()?;
 
     write!(stdout, "\x1b[2J\x1b[H")?;
@@ -236,6 +244,16 @@ fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
     ansi::render_pin_bar(stdout, pin_start, app.cols, session.current_pin(), session.pin_position());
 }
 
+/// Move pin cursor forward (next) or backward (prev), refreshing the pin bar on change.
+fn navigate_pin(stdout: &mut io::Stdout, app: &mut App, idx: usize, forward: bool) {
+    if let Some(session) = app.sessions.get_mut(idx) {
+        let changed = if forward { session.pin_next() } else { session.pin_prev() };
+        if changed && session.is_ai_tool() {
+            refresh_pin_bar(stdout, app, idx);
+        }
+    }
+}
+
 /// Handle a key event in Focus mode.
 fn handle_focus_key(
     stdout: &mut io::Stdout,
@@ -287,24 +305,6 @@ fn handle_focus_key(
                 }
                 return Ok(());
             }
-            KeyCode::Char('[') => {
-                if let Some(session) = app.sessions.get_mut(idx) {
-                    if session.pin_prev() && session.is_ai_tool() {
-                        refresh_pin_bar(stdout, app, idx);
-                    }
-                }
-                refresh_hint_bar(stdout, app, idx, false);
-                return Ok(());
-            }
-            KeyCode::Char(']') => {
-                if let Some(session) = app.sessions.get_mut(idx) {
-                    if session.pin_next() && session.is_ai_tool() {
-                        refresh_pin_bar(stdout, app, idx);
-                    }
-                }
-                refresh_hint_bar(stdout, app, idx, false);
-                return Ok(());
-            }
             KeyCode::Char('x') => {
                 if let Some(session) = app.sessions.get_mut(idx) {
                     session.pin_delete();
@@ -333,6 +333,15 @@ fn handle_focus_key(
                 refresh_hint_bar(stdout, app, idx, false);
                 return Ok(());
             }
+        }
+    }
+
+    // Direct pin navigation: Ctrl+[ (prev) / Ctrl+] (next)
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
+        match key.code {
+            KeyCode::Char('[') => { navigate_pin(stdout, app, idx, false); return Ok(()); }
+            KeyCode::Char(']') => { navigate_pin(stdout, app, idx, true); return Ok(()); }
+            _ => {}
         }
     }
 
