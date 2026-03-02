@@ -164,7 +164,7 @@ pub fn render_update_message(stdout: &mut io::Stdout, row: u16, version: &str) {
     clear_line(stdout);
     write!(
         stdout,
-        "\x1b[32m Update to v{version}: \x1b[1mnpx murmur-tui@latest\x1b[0m"
+        "\x1b[32m Update to v{version}: \x1b[1mnpm i -g murmur-tui\x1b[0m"
     )
     .ok();
     restore_cursor(stdout);

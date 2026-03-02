@@ -16,7 +16,7 @@
     "kanban"
   ],
   "bin": {
-    "murmur-tui": "run.js"
+    "murmur": "run.js"
   },
   "scripts": {
     "postinstall": "node install.js"
