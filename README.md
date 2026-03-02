@@ -20,7 +20,14 @@ Murmur is a lightweight terminal multiplexer built for developers who work with 
 
 ## Quick Start
 
-### npx (no install needed)
+### Install globally
+
+```bash
+npm i -g murmur-tui
+murmur
+```
+
+### Run without install
 
 ```bash
 npx murmur-tui
