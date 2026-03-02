@@ -25,7 +25,6 @@ pub struct Session {
     pub pin_history: Vec<String>,
     pub pin_index: Option<usize>,
     pub input_buffer: String,
-    pub was_alternate_screen: bool,
     window_title: Arc<Mutex<String>>,
     parser: vt100::Parser<TitleTracker>,
     pty_rx: mpsc::Receiver<Vec<u8>>,
@@ -82,7 +81,6 @@ impl Session {
             pin_history: Vec::new(),
             pin_index: None,
             input_buffer: String::new(),
-            was_alternate_screen: false,
             window_title: title_arc,
             parser,
             pty_rx: rx,
@@ -105,12 +103,7 @@ impl Session {
     /// Feed raw bytes into the vt100 parser only (no scrollback tracking).
     /// Used after drain_raw_chunks to keep parser state in sync.
     pub fn feed_parser(&mut self, data: &[u8]) {
-        let was_alt = self.parser.screen().alternate_screen();
         self.parser.process(data);
-        let is_alt = self.parser.screen().alternate_screen();
-        if was_alt != is_alt {
-            self.was_alternate_screen = is_alt;
-        }
     }
 
     /// Process PTY output for Overview mode (drain + parse, no scrollback).

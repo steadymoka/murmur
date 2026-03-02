@@ -119,8 +119,6 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
     if let Some(session) = app.sessions.get_mut(idx) {
         let chunks = session.drain_raw_chunks();
         if !chunks.is_empty() {
-            let was_alt = session.was_alternate_screen;
-
             for chunk in &chunks {
                 stdout.write_all(chunk)?;
                 session.feed_parser(chunk);
@@ -128,16 +126,6 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
             stdout.flush()?;
 
             let is_alt = session.screen().alternate_screen();
-
-            if was_alt != is_alt {
-                if is_alt {
-                    ansi::reset_scroll_region(stdout);
-                } else {
-                    let bar_rows = app.bar_rows;
-                    ansi::set_scroll_region(stdout, 1, rows.saturating_sub(bar_rows));
-                }
-            }
-
             let is_ai = session.is_ai_tool();
             let new_bar_rows = focus_bar_rows(session.current_pin(), is_ai);
             if new_bar_rows != app.bar_rows {
@@ -147,13 +135,14 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                 app.bar_rows = new_bar_rows;
                 let term_rows = rows.saturating_sub(new_bar_rows);
                 let _ = session.resize(term_rows, cols);
-                if !is_alt {
-                    ansi::set_scroll_region(stdout, 1, term_rows);
-                }
             }
 
-            if !is_alt {
+            if is_alt {
+                ansi::reset_scroll_region(stdout);
+                stdout.flush().ok();
+            } else {
                 let bar_rows = app.bar_rows;
+                ansi::set_scroll_region(stdout, 1, rows.saturating_sub(bar_rows));
                 ansi::render_bar_area(
                     stdout, rows, bar_rows, cols, is_ai,
                     session.current_pin(), session.pin_position(),
@@ -217,7 +206,10 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                             session_count,
                             app.update_available.as_deref(),
                         );
+                        let (cr, cc) = session.screen().cursor_position();
+                        write!(stdout, "\x1b[{};{}H", cr + 1, cc + 1).ok();
                     }
+                    stdout.flush().ok();
                 }
             }
             _ => {}
@@ -234,6 +226,7 @@ fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed
         .get(idx)
         .map(|s| s.window_title())
         .unwrap_or_default();
+    ansi::save_cursor(stdout);
     ansi::render_hint_bar(
         stdout,
         app.rows,
@@ -243,6 +236,8 @@ fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed
         app.sessions.len(),
         app.update_available.as_deref(),
     );
+    ansi::restore_cursor(stdout);
+    stdout.flush().ok();
 }
 
 /// Re-render the pin bar, handling bar_rows changes (e.g. multiline ↔ singleline).
@@ -346,7 +341,10 @@ fn handle_focus_key(
             }
             KeyCode::Char('u') => {
                 if let Some(ver) = &app.update_available {
+                    ansi::save_cursor(stdout);
                     ansi::render_update_message(stdout, app.rows, ver);
+                    ansi::restore_cursor(stdout);
+                    stdout.flush().ok();
                 } else {
                     refresh_hint_bar(stdout, app, idx, false);
                 }
@@ -412,6 +410,7 @@ fn handle_focus_key(
                 if !session.screen().alternate_screen() {
                     ansi::set_scroll_region(stdout, 1, term_rows);
                 }
+                ansi::save_cursor(stdout);
                 ansi::render_hint_bar(
                     stdout,
                     app.rows,
@@ -421,11 +420,13 @@ fn handle_focus_key(
                     session_count,
                     app.update_available.as_deref(),
                 );
+                ansi::restore_cursor(stdout);
             }
             ansi::render_bar_area(
                 stdout, app.rows, app.bar_rows, app.cols, is_ai,
                 session.current_pin(), session.pin_position(),
             );
+            stdout.flush().ok();
         }
     }
 

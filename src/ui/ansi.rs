@@ -1,15 +1,14 @@
 use std::io::{self, Write};
+use unicode_width::UnicodeWidthChar;
 
 /// Set DECSTBM scroll region to rows [top, bottom] (1-indexed).
 pub fn set_scroll_region(stdout: &mut io::Stdout, top: u16, bottom: u16) {
     write!(stdout, "\x1b[{};{}r", top, bottom).ok();
-    stdout.flush().ok();
 }
 
 /// Reset DECSTBM scroll region to full screen.
 pub fn reset_scroll_region(stdout: &mut io::Stdout) {
     write!(stdout, "\x1b[r").ok();
-    stdout.flush().ok();
 }
 
 pub fn save_cursor(stdout: &mut io::Stdout) {
@@ -38,7 +37,19 @@ pub fn clear_rows(stdout: &mut io::Stdout, from: u16, to: u16) {
         clear_line(stdout);
     }
     restore_cursor(stdout);
-    stdout.flush().ok();
+}
+
+/// Truncate a string to fit within `max_width` display columns.
+fn truncate_to_width(s: &str, max_width: usize) -> &str {
+    let mut width = 0;
+    for (i, c) in s.char_indices() {
+        let cw = c.width().unwrap_or(0);
+        if width + cw > max_width {
+            return &s[..i];
+        }
+        width += cw;
+    }
+    s
 }
 
 const BAR_BG: &str = "\x1b[48;5;236m";
@@ -79,8 +90,6 @@ pub fn render_pin_bar(
     pinned_prompt: &str,
     position: Option<(usize, usize)>,
 ) {
-    save_cursor(stdout);
-
     if pinned_prompt.is_empty() {
         move_to(stdout, start_row, 1);
         clear_line(stdout);
@@ -98,10 +107,11 @@ pub fn render_pin_bar(
             move_to(stdout, row, 1);
             clear_line(stdout);
 
-            let display = if line.len() > available {
-                format!("{}...", &line[..available.saturating_sub(3)])
+            let truncated = truncate_to_width(line, available);
+            let display = if truncated.len() < line.len() {
+                format!("{}...", truncate_to_width(line, available.saturating_sub(3)))
             } else {
-                (*line).to_string()
+                truncated.to_string()
             };
 
             if i == 0 && !indicator.is_empty() {
@@ -121,9 +131,6 @@ pub fn render_pin_bar(
             }
         }
     }
-
-    restore_cursor(stdout);
-    stdout.flush().ok();
 }
 
 /// Render the hint bar at the given row (1-indexed).
@@ -136,7 +143,6 @@ pub fn render_hint_bar(
     session_count: usize,
     update_version: Option<&str>,
 ) {
-    save_cursor(stdout);
     move_to(stdout, row, 1);
     clear_line(stdout);
 
@@ -184,14 +190,10 @@ pub fn render_hint_bar(
 
         write!(stdout, "\x1b[K\x1b[0m").ok();
     }
-
-    restore_cursor(stdout);
-    stdout.flush().ok();
 }
 
 /// Render a one-shot update instruction message on the hint bar row.
 pub fn render_update_message(stdout: &mut io::Stdout, row: u16, version: &str) {
-    save_cursor(stdout);
     move_to(stdout, row, 1);
     clear_line(stdout);
     write!(
@@ -199,6 +201,4 @@ pub fn render_update_message(stdout: &mut io::Stdout, row: u16, version: &str) {
         "{BAR_BG}\x1b[32m Update to v{version}: \x1b[1mnpm i -g murmur-tui\x1b[K\x1b[0m"
     )
     .ok();
-    restore_cursor(stdout);
-    stdout.flush().ok();
 }

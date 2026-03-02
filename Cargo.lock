@@ -291,6 +291,7 @@ dependencies = [
  "minreq",
  "portable-pty",
  "shellexpand",
+ "unicode-width",
  "vt100",
 ]
 
