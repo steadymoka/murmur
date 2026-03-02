@@ -17,6 +17,7 @@ portable-pty = "0.8"
 anyhow = "1"
 shellexpand = "3"
 vt100 = "0.16"
+minreq = { version = "2", features = ["https"] }
 
 [profile.release]
 lto = true

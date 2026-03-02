@@ -1,8 +1,10 @@
 mod app;
 mod session;
 mod ui;
+mod update;
 
 use std::io::{self, Write};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -27,10 +29,12 @@ fn main() -> Result<()> {
     let (cols, rows) = crossterm::terminal::size()?;
 
     let mut app = App::new(cwd, rows, cols)?;
+    let update_rx = update::check_for_update();
 
     setup_focus_mode(&mut stdout, &mut app);
 
     loop {
+        poll_update(&mut app, &update_rx);
         let idx = app.focus_idx;
         run_focus_tick(&mut stdout, &mut app, idx)?;
         if app.should_quit {
@@ -48,6 +52,15 @@ fn main() -> Result<()> {
     stdout.flush()?;
 
     Ok(())
+}
+
+fn poll_update(app: &mut App, rx: &mpsc::Receiver<Option<String>>) {
+    if app.update_available.is_some() {
+        return;
+    }
+    if let Ok(Some(version)) = rx.try_recv() {
+        app.update_available = Some(version);
+    }
 }
 
 /// Set up Focus mode: clear screen, restore PTY contents, set scroll region, render bars.
@@ -93,6 +106,7 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
             &session.window_title(),
             idx,
             session_count,
+            app.update_available.as_deref(),
         );
 
         let (cr, cc) = session.screen().cursor_position();
@@ -163,6 +177,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                     &session.window_title(),
                     idx,
                     session_count,
+                    app.update_available.as_deref(),
                 );
                 let (cr, cc) = session.screen().cursor_position();
                 write!(stdout, "\x1b[{};{}H", cr + 1, cc + 1).ok();
@@ -217,6 +232,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                             &session.window_title(),
                             idx,
                             session_count,
+                            app.update_available.as_deref(),
                         );
                     }
                 }
@@ -242,6 +258,7 @@ fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed
         &title,
         idx,
         app.sessions.len(),
+        app.update_available.as_deref(),
     );
 }
 
@@ -348,6 +365,14 @@ fn handle_focus_key(
                 refresh_hint_bar(stdout, app, idx, false);
                 return Ok(());
             }
+            KeyCode::Char('u') => {
+                if let Some(ver) = &app.update_available {
+                    ansi::render_update_message(stdout, app.rows, ver);
+                } else {
+                    refresh_hint_bar(stdout, app, idx, false);
+                }
+                return Ok(());
+            }
             KeyCode::Char('q') => {
                 app.should_quit = true;
                 return Ok(());
@@ -415,6 +440,7 @@ fn handle_focus_key(
                     &session.window_title(),
                     idx,
                     session_count,
+                    app.update_available.as_deref(),
                 );
             }
             if is_ai {

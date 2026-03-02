@@ -106,15 +106,21 @@ pub fn render_hint_bar(
     window_title: &str,
     session_index: usize,
     session_count: usize,
+    update_version: Option<&str>,
 ) {
     save_cursor(stdout);
     move_to(stdout, row, 1);
     clear_line(stdout);
 
     if prefix_armed {
+        let update_hint = if update_version.is_some() {
+            "  u: update"
+        } else {
+            ""
+        };
         write!(
             stdout,
-            "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m n: new  d: del  []: pin  x: unpin  1-9: switch  q: quit \x1b[0m"
+            "\x1b[1;30;46m Ctrl+\\ \x1b[0;36m n: new  d: del  []: pin  x: unpin  1-9: switch{update_hint}  q: quit \x1b[0m"
         )
         .ok();
     } else {
@@ -137,8 +143,30 @@ pub fn render_hint_bar(
             "\x1b[90m \u{2502} \x1b[36mCtrl+\\\x1b[90m \u{2192} n/d/q\x1b[0m"
         )
         .ok();
+
+        if let Some(ver) = update_version {
+            write!(
+                stdout,
+                "\x1b[90m \u{2502} \x1b[32m\u{2191} v{ver} available\x1b[0m"
+            )
+            .ok();
+        }
     }
 
+    restore_cursor(stdout);
+    stdout.flush().ok();
+}
+
+/// Render a one-shot update instruction message on the hint bar row.
+pub fn render_update_message(stdout: &mut io::Stdout, row: u16, version: &str) {
+    save_cursor(stdout);
+    move_to(stdout, row, 1);
+    clear_line(stdout);
+    write!(
+        stdout,
+        "\x1b[32m Update to v{version}: \x1b[1mnpx murmur-tui@latest\x1b[0m"
+    )
+    .ok();
     restore_cursor(stdout);
     stdout.flush().ok();
 }

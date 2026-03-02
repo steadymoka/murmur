@@ -26,6 +26,7 @@ pub struct App {
     pub rows: u16,
     pub cols: u16,
     pub focus_idx: usize,
+    pub update_available: Option<String>,
 }
 
 impl App {
@@ -42,6 +43,7 @@ impl App {
             rows,
             cols,
             focus_idx: 0,
+            update_available: None,
         })
     }
 
