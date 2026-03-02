@@ -136,7 +136,9 @@ impl Session {
 
     pub fn track_input(&mut self, c: char) {
         if let Some(command) = self.input.track(c) {
-            self.pins.push(command);
+            if self.is_ai_tool() {
+                self.pins.push(command);
+            }
         }
     }
 }
