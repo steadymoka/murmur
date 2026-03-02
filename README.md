@@ -1,22 +1,20 @@
 # murmur
 
-**Terminal command center for AI coding sessions.**
+**Terminal companion for AI coding sessions.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-2021_edition-orange.svg)](https://www.rust-lang.org/)
 
-Murmur is a lightweight terminal multiplexer built for developers who work with AI coding agents. It provides a raw PTY passthrough with prefix-key session management — no mode switching, no screen takeover.
+Murmur wraps your terminal in a thin PTY layer that detects AI coding tools (Claude Code, Codex) and pins your prompts as a persistent context bar. No mode switching, no screen takeover — just a quiet hint bar until an AI session starts.
 
 <!-- screenshot -->
 
 ## Features
 
-- **Prefix-key session management** — Create, switch, and delete sessions without leaving your terminal (`Ctrl+\`)
-- **Prompt pinning with history** — Automatically captures commands as a persistent context bar, with navigable history
-- **Claude Code detection** — Recognizes AI coding sessions and shows a pin bar with session context
+- **Prompt pinning** — Automatically captures commands entered inside AI tools as a navigable history bar
+- **AI tool detection** — Recognizes Claude Code and Codex by window title; shows the pin bar only during AI sessions
 - **PTY passthrough** — Zero-interference raw terminal I/O with full ANSI support
-- **Window title tracking** — Captures and displays terminal window titles per session
-- **Alternate screen aware** — Correctly handles full-screen TUI apps like vim and htop
+- **Update notifications** — Background check for new releases, shown in the hint bar
 
 ## Quick Start
 
@@ -42,47 +40,27 @@ cargo build --release
 ./target/release/murmur
 ```
 
-Murmur launches with a shell session in the current directory. A hint bar at the bottom shows available prefix keys. During AI coding sessions, a pin bar appears above it with session context.
+Murmur launches a shell in the current directory. A hint bar at the bottom shows the prefix key. When you start an AI coding tool, a pin bar appears above it with your prompt history.
 
 ## Keybindings
 
-All input is forwarded to the PTY. Use `Ctrl+\` as a prefix key to access commands.
+All input is forwarded to the PTY. `Ctrl+\` is the prefix key.
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+[` | Previous pin (older) |
-| `Ctrl+]` | Next pin (newer) |
-| `Ctrl+\` `n` | New session |
-| `Ctrl+\` `d` | Delete current session |
-| `Ctrl+\` `x` | Delete current pin from history |
-| `Ctrl+\` `1`–`9` | Switch to session N |
+| `Ctrl+\` `[` | Previous pin (older) |
+| `Ctrl+\` `]` | Next pin (newer) |
+| `Ctrl+\` `x` | Delete current pin |
+| `Ctrl+\` `u` | Show update info |
 | `Ctrl+\` `q` | Quit |
-
-> `Ctrl+[` requires a terminal that supports [Kitty keyboard protocol](https://sw.kovidgoyal.net/kitty/keyboard-protocol/) (iTerm2, Alacritty, Kitty, WezTerm, etc.). On unsupported terminals, `Ctrl+[` is treated as ESC.
 
 ## How It Works
 
-Murmur attaches your terminal to a PTY session. Output is written directly to stdout through a scroll region that reserves space for persistent context bars. A VT100 parser runs in parallel to track screen state, window titles, and input for prompt pinning.
+Murmur attaches your terminal to a PTY and reserves a scroll region at the bottom for context bars. A VT100 parser runs in parallel to track window titles and input.
 
-The prefix key (`Ctrl+\`) is the only input murmur intercepts — everything else passes through untouched. Session management (create, delete, switch) is handled entirely through prefix key combinations.
+When the window title contains a known AI tool name, murmur starts recording commands you enter. Each Enter keystroke pins the command to a history bar visible above the hint bar. You can navigate through pinned prompts with the prefix key combinations.
 
-## Configuration
-
-Create a `murmur.toml` in your project root:
-
-```toml
-name = "my-project"
-
-[agent]
-command = "claude"
-args = ["--project", "."]
-```
-
-| Field | Description |
-| --- | --- |
-| `name` | Project name displayed in hint bar |
-| `agent.command` | Shell or command to run (default: `$SHELL`) |
-| `agent.args` | Arguments passed to the command |
+The prefix key (`Ctrl+\`) is the only input murmur intercepts — everything else passes through untouched.
 
 ## License
 
