@@ -14,8 +14,6 @@ pub struct BarState<'a> {
     pub pin_position: Option<(usize, usize)>,
     pub prefix_armed: bool,
     pub window_title: &'a str,
-    pub session_index: usize,
-    pub session_count: usize,
     pub update_version: Option<&'a str>,
 }
 
@@ -35,8 +33,6 @@ pub fn render_bars(w: &mut impl Write, state: &BarState) {
         state.rows,
         state.prefix_armed,
         state.window_title,
-        state.session_index,
-        state.session_count,
         state.update_version,
     );
 }
@@ -71,8 +67,6 @@ mod tests {
             pin_position: None,
             prefix_armed: false,
             window_title: "title",
-            session_index: 0,
-            session_count: 1,
             update_version: None,
         };
         render_bars(&mut buf, &state);

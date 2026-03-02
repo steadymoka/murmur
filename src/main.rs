@@ -98,8 +98,6 @@ fn render_all_bars(stdout: &mut io::Stdout, app: &App, idx: usize) {
             pin_position: session.pins.position(),
             prefix_armed: app.prefix_armed,
             window_title: &title,
-            session_index: idx,
-            session_count: app.sessions.len(),
             update_version: app.update_available.as_deref(),
         };
         bar::render_bars(stdout, &state);
@@ -181,14 +179,7 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
         stdout.flush().ok();
     }
 
-    // 2. Process non-focused sessions (parser only)
-    for (i, session) in app.sessions.iter_mut().enumerate() {
-        if i != idx {
-            session.process_pty_output();
-        }
-    }
-
-    // 3. Poll for events
+    // 2. Poll for events
     if let Some(ev) = App::poll_event(Duration::from_millis(16))? {
         match ev {
             Event::Key(key) => {
@@ -239,8 +230,6 @@ fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize) {
         app.rows,
         app.prefix_armed,
         &title,
-        idx,
-        app.sessions.len(),
         app.update_available.as_deref(),
     );
     ansi::restore_cursor(stdout);
@@ -311,37 +300,6 @@ fn handle_focus_key(
         app.prefix_armed = false;
 
         match key.code {
-            KeyCode::Char('n') => {
-                let cwd = app.sessions[idx].cwd.clone();
-                match app.create_session(cwd) {
-                    Ok(new_idx) => {
-                        app.focus_idx = new_idx;
-                        setup_focus_mode(stdout, app);
-                    }
-                    Err(_) => {
-                        refresh_hint_bar(stdout, app, idx);
-                    }
-                }
-                return Ok(());
-            }
-            KeyCode::Char('d') => {
-                app.delete_current_session();
-                if app.should_quit {
-                    return Ok(());
-                }
-                setup_focus_mode(stdout, app);
-                return Ok(());
-            }
-            KeyCode::Char(c @ '1'..='9') => {
-                let target = (c as usize) - ('1' as usize);
-                if target < app.sessions.len() && target != idx {
-                    app.focus_idx = target;
-                    setup_focus_mode(stdout, app);
-                } else {
-                    refresh_hint_bar(stdout, app, idx);
-                }
-                return Ok(());
-            }
             KeyCode::Char('x') => {
                 if let Some(session) = app.sessions.get_mut(idx) {
                     session.pins.delete();

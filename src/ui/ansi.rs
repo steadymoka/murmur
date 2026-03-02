@@ -149,8 +149,6 @@ pub fn render_hint_bar(
     row: u16,
     prefix_armed: bool,
     window_title: &str,
-    session_index: usize,
-    session_count: usize,
     update_version: Option<&str>,
 ) {
     move_to(w, row, 1);
@@ -164,21 +162,11 @@ pub fn render_hint_bar(
         };
         write!(
             w,
-            "{PREFIX_STYLE} Ctrl+\\ {PREFIX_KEY_STYLE} n: new  d: del  []: pin  x: unpin  1-9: switch{update_hint}  q: quit {RESET}"
+            "{PREFIX_STYLE} Ctrl+\\ {PREFIX_KEY_STYLE} []: pin  x: unpin{update_hint}  q: quit {RESET}"
         )
         .ok();
     } else {
         write!(w, "{BAR_BG}").ok();
-
-        if session_count > 1 {
-            write!(
-                w,
-                "{CYAN}[{}/{}]{RESET}{BAR_BG} ",
-                session_index + 1,
-                session_count
-            )
-            .ok();
-        }
 
         if !window_title.is_empty() {
             write!(w, "{DIM}{}{RESET}{BAR_BG}", window_title).ok();
@@ -186,7 +174,7 @@ pub fn render_hint_bar(
 
         write!(
             w,
-            "{DIM} \u{2502} {CYAN}Ctrl+\\{DIM} \u{2192} n/d/q{RESET}{BAR_BG}"
+            "{DIM} \u{2502} {CYAN}Ctrl+\\{DIM} \u{2192} q{RESET}{BAR_BG}"
         )
         .ok();
 
@@ -337,7 +325,7 @@ mod tests {
     #[test]
     fn test_render_hint_bar_normal() {
         let mut buf = Vec::new();
-        render_hint_bar(&mut buf, 24, false, "my-title", 0, 1, None);
+        render_hint_bar(&mut buf, 24, false, "my-title", None);
         let s = output(&buf);
         assert!(s.contains("my-title"));
         assert!(s.contains("Ctrl+\\"));
@@ -346,27 +334,19 @@ mod tests {
     #[test]
     fn test_render_hint_bar_prefix_armed() {
         let mut buf = Vec::new();
-        render_hint_bar(&mut buf, 24, true, "", 0, 1, None);
+        render_hint_bar(&mut buf, 24, true, "", None);
         let s = output(&buf);
-        assert!(s.contains("n: new"));
-        assert!(s.contains("d: del"));
+        assert!(s.contains("[]: pin"));
+        assert!(s.contains("x: unpin"));
         assert!(s.contains("q: quit"));
     }
 
     #[test]
     fn test_render_hint_bar_with_update() {
         let mut buf = Vec::new();
-        render_hint_bar(&mut buf, 24, false, "", 0, 1, Some("0.2.0"));
+        render_hint_bar(&mut buf, 24, false, "", Some("0.2.0"));
         let s = output(&buf);
         assert!(s.contains("v0.2.0 available"));
-    }
-
-    #[test]
-    fn test_render_hint_bar_multi_session() {
-        let mut buf = Vec::new();
-        render_hint_bar(&mut buf, 24, false, "", 2, 5, None);
-        let s = output(&buf);
-        assert!(s.contains("[3/5]")); // session_index + 1
     }
 
     #[test]

@@ -25,7 +25,6 @@ impl vt100::Callbacks for TitleTracker {
 }
 
 pub struct Session {
-    pub cwd: PathBuf,
     pub pins: PinHistory,
     input: InputTracker,
     window_title: Arc<Mutex<String>>,
@@ -80,7 +79,6 @@ impl Session {
         let parser = vt100::Parser::new_with_callbacks(rows, cols, 0, tracker);
 
         Ok(Session {
-            cwd,
             pins: PinHistory::new(),
             input: InputTracker::new(),
             window_title: title_arc,
@@ -102,19 +100,6 @@ impl Session {
 
     pub fn feed_parser(&mut self, data: &[u8]) {
         self.parser.process(data);
-    }
-
-    /// Process queued PTY output, capped to avoid blocking the event loop.
-    pub fn process_pty_output(&mut self) {
-        const MAX_BYTES_PER_TICK: usize = 64 * 1024;
-        let mut processed = 0;
-        while let Ok(chunk) = self.pty_rx.try_recv() {
-            processed += chunk.len();
-            self.parser.process(&chunk);
-            if processed >= MAX_BYTES_PER_TICK {
-                break;
-            }
-        }
     }
 
     pub fn screen(&self) -> &vt100::Screen {
