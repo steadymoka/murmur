@@ -88,16 +88,10 @@ fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
             ansi::set_scroll_region(stdout, 1, scroll_bottom);
         }
 
-        if is_ai {
-            let pin_start = rows - bar_rows + 1;
-            ansi::render_pin_bar(
-                stdout,
-                pin_start,
-                cols,
-                session.current_pin(),
-                session.pin_position(),
-            );
-        }
+        ansi::render_bar_area(
+            stdout, rows, bar_rows, cols, is_ai,
+            session.current_pin(), session.pin_position(),
+        );
         let hint_row = rows;
         ansi::render_hint_bar(
             stdout,
@@ -160,16 +154,10 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
 
             if !is_alt {
                 let bar_rows = app.bar_rows;
-                if is_ai {
-                    let pin_start = rows - bar_rows + 1;
-                    ansi::render_pin_bar(
-                        stdout,
-                        pin_start,
-                        cols,
-                        session.current_pin(),
-                        session.pin_position(),
-                    );
-                }
+                ansi::render_bar_area(
+                    stdout, rows, bar_rows, cols, is_ai,
+                    session.current_pin(), session.pin_position(),
+                );
                 ansi::render_hint_bar(
                     stdout,
                     rows,
@@ -215,16 +203,11 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
 
                     if !session.screen().alternate_screen() {
                         ansi::set_scroll_region(stdout, 1, term_rows);
-                        if session.is_ai_tool() {
-                            let pin_start = new_rows - bar_rows + 1;
-                            ansi::render_pin_bar(
-                                stdout,
-                                pin_start,
-                                new_cols,
-                                session.current_pin(),
-                                session.pin_position(),
-                            );
-                        }
+                        ansi::render_bar_area(
+                            stdout, new_rows, bar_rows, new_cols,
+                            session.is_ai_tool(),
+                            session.current_pin(), session.pin_position(),
+                        );
                         ansi::render_hint_bar(
                             stdout,
                             new_rows,
@@ -279,14 +262,10 @@ fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
             ansi::set_scroll_region(stdout, 1, term_rows);
         }
     }
-    let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
     let session = &app.sessions[idx];
-    ansi::render_pin_bar(
-        stdout,
-        pin_start,
-        app.cols,
-        session.current_pin(),
-        session.pin_position(),
+    ansi::render_bar_area(
+        stdout, app.rows, app.bar_rows, app.cols, true,
+        session.current_pin(), session.pin_position(),
     );
 }
 
@@ -443,16 +422,10 @@ fn handle_focus_key(
                     app.update_available.as_deref(),
                 );
             }
-            if is_ai {
-                let pin_start = app.rows.saturating_sub(app.bar_rows) + 1;
-                ansi::render_pin_bar(
-                    stdout,
-                    pin_start,
-                    app.cols,
-                    session.current_pin(),
-                    session.pin_position(),
-                );
-            }
+            ansi::render_bar_area(
+                stdout, app.rows, app.bar_rows, app.cols, is_ai,
+                session.current_pin(), session.pin_position(),
+            );
         }
     }
 

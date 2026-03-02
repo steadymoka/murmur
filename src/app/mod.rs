@@ -5,17 +5,17 @@ use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::session::Session;
 
-/// Compute how many rows the bottom bar area occupies (PIN lines + hint bar).
+/// Compute how many rows the bottom bar area occupies (separator + PIN lines + hint bar).
 pub fn focus_bar_rows(pinned_prompt: &str, is_ai_tool: bool) -> u16 {
     if !is_ai_tool {
-        return 1; // hint bar only
+        return 2; // separator + hint bar
     }
     let pin_lines = if pinned_prompt.is_empty() {
         1
     } else {
         (pinned_prompt.chars().filter(|&c| c == '\n').count() + 1) as u16
     };
-    pin_lines + 1
+    pin_lines + 2 // separator + pin lines + hint bar
 }
 
 pub struct App {
@@ -102,6 +102,7 @@ pub fn key_event_to_bytes(key: &KeyEvent) -> Option<Vec<u8>> {
         KeyCode::Enter => vec![b'\r'],
         KeyCode::Backspace => vec![0x7f],
         KeyCode::Tab => vec![b'\t'],
+        KeyCode::BackTab => b"\x1b[Z".to_vec(),
         KeyCode::Esc => vec![0x1b],
         KeyCode::Up => b"\x1b[A".to_vec(),
         KeyCode::Down => b"\x1b[B".to_vec(),
