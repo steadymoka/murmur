@@ -241,7 +241,7 @@ fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
     if !app.sessions[idx].is_ai_tool() {
         return;
     }
-    if let Some(resize) = bar::apply_bar_resize(
+    let resized = if let Some(resize) = bar::apply_bar_resize(
         stdout,
         app.rows,
         app.bar_rows,
@@ -253,7 +253,19 @@ fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
         if !app.sessions[idx].screen().alternate_screen() {
             ansi::set_scroll_region(stdout, 1, resize.term_rows);
         }
+        true
+    } else {
+        false
+    };
+
+    if resized {
+        // Re-render session content to fill freed/updated rows,
+        // then restore cursor (set_scroll_region moves it to (1,1) per VT100 spec)
+        let contents = app.sessions[idx].screen().contents_formatted();
+        stdout.write_all(&contents).ok();
+        restore_session_cursor(stdout, app, idx);
     }
+
     let session = &app.sessions[idx];
     ansi::render_bar_area(
         stdout,
@@ -264,6 +276,11 @@ fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
         session.pins.current(),
         session.pins.position(),
     );
+
+    if resized {
+        refresh_hint_bar(stdout, app, idx);
+    }
+    stdout.flush().ok();
 }
 
 /// Move pin cursor forward (next) or backward (prev).
