@@ -1,4 +1,6 @@
 mod app;
+mod key;
+mod layout;
 mod session;
 mod ui;
 mod update;
@@ -14,8 +16,12 @@ use crossterm::event::{
 };
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
-use app::{focus_bar_rows, key_event_to_bytes, key_event_to_track_char, App};
+use app::App;
+use key::{key_event_to_bytes, key_event_to_track_char};
+use layout::focus_bar_rows;
+use session::Session;
 use ui::ansi;
+use ui::bar::{self, BarState};
 
 fn main() -> Result<()> {
     enable_raw_mode()?;
@@ -42,13 +48,12 @@ fn main() -> Result<()> {
         }
     }
 
-    // Cleanup
     ansi::reset_scroll_region(&mut stdout);
     crossterm::execute!(stdout, crossterm::cursor::Show)?;
     let _ = crossterm::execute!(stdout, PopKeyboardEnhancementFlags);
     disable_raw_mode()?;
 
-    write!(stdout, "\x1b[2J\x1b[H")?;
+    ansi::clear_screen(&mut stdout);
     stdout.flush()?;
 
     Ok(())
@@ -63,50 +68,77 @@ fn poll_update(app: &mut App, rx: &mpsc::Receiver<Option<String>>) {
     }
 }
 
+/// Forward a key event to the PTY session, tracking input for pin history.
+fn forward_key(session: &mut Session, key: &crossterm::event::KeyEvent) -> Result<()> {
+    if let Some(bytes) = key_event_to_bytes(key) {
+        if let Some(tb) = key_event_to_track_char(key) {
+            session.track_input(tb);
+        }
+        session.write_bytes(&bytes)?;
+    }
+    Ok(())
+}
+
+/// Render bars and restore cursor to the session's position.
+fn render_bars_and_restore_cursor(stdout: &mut io::Stdout, app: &App, idx: usize) {
+    render_all_bars(stdout, app, idx);
+    restore_session_cursor(stdout, app, idx);
+}
+
+/// Render bars using immutable borrows of App + Session.
+fn render_all_bars(stdout: &mut io::Stdout, app: &App, idx: usize) {
+    if let Some(session) = app.sessions.get(idx) {
+        let title = session.window_title();
+        let state = BarState {
+            rows: app.rows,
+            cols: app.cols,
+            bar_rows: app.bar_rows,
+            is_ai: session::is_ai_tool_title(&title),
+            pinned_prompt: session.pins.current(),
+            pin_position: session.pins.position(),
+            prefix_armed: app.prefix_armed,
+            window_title: &title,
+            session_index: idx,
+            session_count: app.sessions.len(),
+            update_version: app.update_available.as_deref(),
+        };
+        bar::render_bars(stdout, &state);
+    }
+}
+
+fn restore_session_cursor(stdout: &mut io::Stdout, app: &App, idx: usize) {
+    if let Some(session) = app.sessions.get(idx) {
+        let (cr, cc) = session.screen().cursor_position();
+        ansi::move_to(stdout, cr + 1, cc + 1);
+    }
+}
+
 /// Set up Focus mode: clear screen, restore PTY contents, set scroll region, render bars.
 fn setup_focus_mode(stdout: &mut io::Stdout, app: &mut App) {
     let rows = app.rows;
     let cols = app.cols;
     let idx = app.focus_idx;
 
-    let session_count = app.sessions.len();
     if let Some(session) = app.sessions.get_mut(idx) {
         let is_ai = session.is_ai_tool();
-        app.bar_rows = focus_bar_rows(session.current_pin(), is_ai);
+        app.bar_rows = focus_bar_rows(session.pins.current(), is_ai);
         let bar_rows = app.bar_rows;
 
         let term_rows = rows.saturating_sub(bar_rows);
         let _ = session.resize(term_rows, cols);
 
-        write!(stdout, "\x1b[2J\x1b[H").ok();
+        ansi::clear_screen(stdout);
 
         let contents = session.screen().contents_formatted();
         stdout.write_all(&contents).ok();
 
-        let scroll_bottom = rows.saturating_sub(bar_rows);
         if !session.screen().alternate_screen() {
-            ansi::set_scroll_region(stdout, 1, scroll_bottom);
+            ansi::set_scroll_region(stdout, 1, rows.saturating_sub(bar_rows));
         }
-
-        ansi::render_bar_area(
-            stdout, rows, bar_rows, cols, is_ai,
-            session.current_pin(), session.pin_position(),
-        );
-        let hint_row = rows;
-        ansi::render_hint_bar(
-            stdout,
-            hint_row,
-            app.prefix_armed,
-            &session.window_title(),
-            idx,
-            session_count,
-            app.update_available.as_deref(),
-        );
-
-        let (cr, cc) = session.screen().cursor_position();
-        write!(stdout, "\x1b[{};{}H", cr + 1, cc + 1).ok();
-        stdout.flush().ok();
     }
+
+    render_bars_and_restore_cursor(stdout, app, idx);
+    stdout.flush().ok();
 }
 
 /// One tick of the Focus mode loop.
@@ -114,53 +146,39 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
     let rows = app.rows;
     let cols = app.cols;
 
-    // 1. Drain raw PTY output from the focused session and write to stdout
-    let session_count = app.sessions.len();
+    // 1. Drain raw PTY output from the focused session
+    let mut has_output = false;
+    let mut is_alt = false;
     if let Some(session) = app.sessions.get_mut(idx) {
         let chunks = session.drain_raw_chunks();
         if !chunks.is_empty() {
+            has_output = true;
             for chunk in &chunks {
                 stdout.write_all(chunk)?;
                 session.feed_parser(chunk);
             }
             stdout.flush()?;
 
-            let is_alt = session.screen().alternate_screen();
+            is_alt = session.screen().alternate_screen();
             let is_ai = session.is_ai_tool();
-            let new_bar_rows = focus_bar_rows(session.current_pin(), is_ai);
-            if new_bar_rows != app.bar_rows {
-                let old_bar_start = rows.saturating_sub(app.bar_rows) + 1;
-                let new_bar_start = rows.saturating_sub(new_bar_rows) + 1;
-                ansi::clear_rows(stdout, old_bar_start.min(new_bar_start), rows);
-                app.bar_rows = new_bar_rows;
-                let term_rows = rows.saturating_sub(new_bar_rows);
-                let _ = session.resize(term_rows, cols);
-            }
 
-            if is_alt {
-                ansi::reset_scroll_region(stdout);
-                stdout.flush().ok();
-            } else {
-                let bar_rows = app.bar_rows;
-                ansi::set_scroll_region(stdout, 1, rows.saturating_sub(bar_rows));
-                ansi::render_bar_area(
-                    stdout, rows, bar_rows, cols, is_ai,
-                    session.current_pin(), session.pin_position(),
-                );
-                ansi::render_hint_bar(
-                    stdout,
-                    rows,
-                    app.prefix_armed,
-                    &session.window_title(),
-                    idx,
-                    session_count,
-                    app.update_available.as_deref(),
-                );
-                let (cr, cc) = session.screen().cursor_position();
-                write!(stdout, "\x1b[{};{}H", cr + 1, cc + 1).ok();
-                stdout.flush().ok();
+            if let Some(resize) =
+                bar::apply_bar_resize(stdout, rows, app.bar_rows, session.pins.current(), is_ai)
+            {
+                app.bar_rows = resize.new_bar_rows;
+                let _ = session.resize(resize.term_rows, cols);
             }
         }
+    }
+
+    if has_output {
+        if is_alt {
+            ansi::reset_scroll_region(stdout);
+        } else {
+            ansi::set_scroll_region(stdout, 1, rows.saturating_sub(app.bar_rows));
+            render_bars_and_restore_cursor(stdout, app, idx);
+        }
+        stdout.flush().ok();
     }
 
     // 2. Process non-focused sessions (parser only)
@@ -184,33 +202,22 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
             Event::Resize(new_cols, new_rows) => {
                 app.rows = new_rows;
                 app.cols = new_cols;
-                let session_count = app.sessions.len();
-                if let Some(session) = app.sessions.get_mut(idx) {
-                    let bar_rows = app.bar_rows;
-                    let term_rows = new_rows.saturating_sub(bar_rows);
-                    let _ = session.resize(term_rows, new_cols);
 
-                    if !session.screen().alternate_screen() {
-                        ansi::set_scroll_region(stdout, 1, term_rows);
-                        ansi::render_bar_area(
-                            stdout, new_rows, bar_rows, new_cols,
-                            session.is_ai_tool(),
-                            session.current_pin(), session.pin_position(),
-                        );
-                        ansi::render_hint_bar(
-                            stdout,
-                            new_rows,
-                            app.prefix_armed,
-                            &session.window_title(),
-                            idx,
-                            session_count,
-                            app.update_available.as_deref(),
-                        );
-                        let (cr, cc) = session.screen().cursor_position();
-                        write!(stdout, "\x1b[{};{}H", cr + 1, cc + 1).ok();
-                    }
-                    stdout.flush().ok();
+                if let Some(session) = app.sessions.get_mut(idx) {
+                    let term_rows = new_rows.saturating_sub(app.bar_rows);
+                    let _ = session.resize(term_rows, new_cols);
                 }
+
+                if app
+                    .sessions
+                    .get(idx)
+                    .is_some_and(|s| !s.screen().alternate_screen())
+                {
+                    let term_rows = new_rows.saturating_sub(app.bar_rows);
+                    ansi::set_scroll_region(stdout, 1, term_rows);
+                    render_bars_and_restore_cursor(stdout, app, idx);
+                }
+                stdout.flush().ok();
             }
             _ => {}
         }
@@ -219,8 +226,8 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
     Ok(())
 }
 
-/// Render the hint bar with current session info (title + index).
-fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed: bool) {
+/// Render the hint bar with current session info.
+fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize) {
     let title = app
         .sessions
         .get(idx)
@@ -230,7 +237,7 @@ fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed
     ansi::render_hint_bar(
         stdout,
         app.rows,
-        prefix_armed,
+        app.prefix_armed,
         &title,
         idx,
         app.sessions.len(),
@@ -240,37 +247,43 @@ fn refresh_hint_bar(stdout: &mut io::Stdout, app: &App, idx: usize, prefix_armed
     stdout.flush().ok();
 }
 
-/// Re-render the pin bar, handling bar_rows changes (e.g. multiline ↔ singleline).
+/// Re-render the pin bar, handling bar_rows changes.
 fn refresh_pin_bar(stdout: &mut io::Stdout, app: &mut App, idx: usize) {
     if !app.sessions[idx].is_ai_tool() {
         return;
     }
-    let new_bar_rows = focus_bar_rows(app.sessions[idx].current_pin(), true);
-    if new_bar_rows != app.bar_rows {
-        let old_bar_start = app.rows.saturating_sub(app.bar_rows) + 1;
-        let new_bar_start = app.rows.saturating_sub(new_bar_rows) + 1;
-        ansi::clear_rows(stdout, old_bar_start.min(new_bar_start), app.rows);
-        app.bar_rows = new_bar_rows;
-        let term_rows = app.rows.saturating_sub(new_bar_rows);
-        let _ = app.sessions[idx].resize(term_rows, app.cols);
+    if let Some(resize) = bar::apply_bar_resize(
+        stdout,
+        app.rows,
+        app.bar_rows,
+        app.sessions[idx].pins.current(),
+        true,
+    ) {
+        app.bar_rows = resize.new_bar_rows;
+        let _ = app.sessions[idx].resize(resize.term_rows, app.cols);
         if !app.sessions[idx].screen().alternate_screen() {
-            ansi::set_scroll_region(stdout, 1, term_rows);
+            ansi::set_scroll_region(stdout, 1, resize.term_rows);
         }
     }
     let session = &app.sessions[idx];
     ansi::render_bar_area(
-        stdout, app.rows, app.bar_rows, app.cols, true,
-        session.current_pin(), session.pin_position(),
+        stdout,
+        app.rows,
+        app.bar_rows,
+        app.cols,
+        true,
+        session.pins.current(),
+        session.pins.position(),
     );
 }
 
-/// Move pin cursor forward (next) or backward (prev), refreshing the pin bar on change.
+/// Move pin cursor forward (next) or backward (prev).
 fn navigate_pin(stdout: &mut io::Stdout, app: &mut App, idx: usize, forward: bool) {
     if let Some(session) = app.sessions.get_mut(idx) {
         let changed = if forward {
-            session.pin_next()
+            session.pins.next()
         } else {
-            session.pin_prev()
+            session.pins.prev()
         };
         if changed && session.is_ai_tool() {
             refresh_pin_bar(stdout, app, idx);
@@ -290,7 +303,7 @@ fn handle_focus_key(
 
     if is_prefix {
         app.prefix_armed = true;
-        refresh_hint_bar(stdout, app, idx, true);
+        refresh_hint_bar(stdout, app, idx);
         return Ok(());
     }
 
@@ -306,7 +319,7 @@ fn handle_focus_key(
                         setup_focus_mode(stdout, app);
                     }
                     Err(_) => {
-                        refresh_hint_bar(stdout, app, idx, false);
+                        refresh_hint_bar(stdout, app, idx);
                     }
                 }
                 return Ok(());
@@ -325,18 +338,18 @@ fn handle_focus_key(
                     app.focus_idx = target;
                     setup_focus_mode(stdout, app);
                 } else {
-                    refresh_hint_bar(stdout, app, idx, false);
+                    refresh_hint_bar(stdout, app, idx);
                 }
                 return Ok(());
             }
             KeyCode::Char('x') => {
                 if let Some(session) = app.sessions.get_mut(idx) {
-                    session.pin_delete();
+                    session.pins.delete();
                     if session.is_ai_tool() {
                         refresh_pin_bar(stdout, app, idx);
                     }
                 }
-                refresh_hint_bar(stdout, app, idx, false);
+                refresh_hint_bar(stdout, app, idx);
                 return Ok(());
             }
             KeyCode::Char('u') => {
@@ -346,7 +359,7 @@ fn handle_focus_key(
                     ansi::restore_cursor(stdout);
                     stdout.flush().ok();
                 } else {
-                    refresh_hint_bar(stdout, app, idx, false);
+                    refresh_hint_bar(stdout, app, idx);
                 }
                 return Ok(());
             }
@@ -355,17 +368,11 @@ fn handle_focus_key(
                 return Ok(());
             }
             _ => {
-                // Unknown prefix key — forward literal Ctrl+\ + the key
                 if let Some(session) = app.sessions.get_mut(idx) {
                     session.write_bytes(&[0x1c])?;
-                    if let Some(bytes) = key_event_to_bytes(&key) {
-                        if let Some(tb) = key_event_to_track_char(&key) {
-                            session.track_input(tb);
-                        }
-                        session.write_bytes(&bytes)?;
-                    }
+                    forward_key(session, &key)?;
                 }
-                refresh_hint_bar(stdout, app, idx, false);
+                refresh_hint_bar(stdout, app, idx);
                 return Ok(());
             }
         }
@@ -387,47 +394,44 @@ fn handle_focus_key(
     }
 
     // Normal key → forward to PTY
-    let session_count = app.sessions.len();
+    let mut enter_resized = false;
     if let Some(session) = app.sessions.get_mut(idx) {
-        if let Some(bytes) = key_event_to_bytes(&key) {
-            if let Some(tb) = key_event_to_track_char(&key) {
-                session.track_input(tb);
-            }
-            session.write_bytes(&bytes)?;
-        }
+        forward_key(session, &key)?;
 
         if key.code == KeyCode::Enter {
-            let is_ai = session.is_ai_tool();
-            let new_bar_rows = focus_bar_rows(session.current_pin(), is_ai);
-            if new_bar_rows != app.bar_rows {
-                let old_bar_start = app.rows.saturating_sub(app.bar_rows) + 1;
-                let new_bar_start = app.rows.saturating_sub(new_bar_rows) + 1;
-                ansi::clear_rows(stdout, old_bar_start.min(new_bar_start), app.rows);
-
-                app.bar_rows = new_bar_rows;
-                let term_rows = app.rows.saturating_sub(new_bar_rows);
-                session.resize(term_rows, app.cols)?;
+            if let Some(resize) = bar::apply_bar_resize(
+                stdout,
+                app.rows,
+                app.bar_rows,
+                session.pins.current(),
+                session.is_ai_tool(),
+            ) {
+                app.bar_rows = resize.new_bar_rows;
+                session.resize(resize.term_rows, app.cols)?;
                 if !session.screen().alternate_screen() {
-                    ansi::set_scroll_region(stdout, 1, term_rows);
+                    ansi::set_scroll_region(stdout, 1, resize.term_rows);
                 }
-                ansi::save_cursor(stdout);
-                ansi::render_hint_bar(
-                    stdout,
-                    app.rows,
-                    app.prefix_armed,
-                    &session.window_title(),
-                    idx,
-                    session_count,
-                    app.update_available.as_deref(),
-                );
-                ansi::restore_cursor(stdout);
+                enter_resized = true;
             }
-            ansi::render_bar_area(
-                stdout, app.rows, app.bar_rows, app.cols, is_ai,
-                session.current_pin(), session.pin_position(),
-            );
-            stdout.flush().ok();
         }
+    }
+
+    if key.code == KeyCode::Enter {
+        if enter_resized {
+            refresh_hint_bar(stdout, app, idx);
+        }
+        if let Some(session) = app.sessions.get(idx) {
+            ansi::render_bar_area(
+                stdout,
+                app.rows,
+                app.bar_rows,
+                app.cols,
+                session.is_ai_tool(),
+                session.pins.current(),
+                session.pins.position(),
+            );
+        }
+        stdout.flush().ok();
     }
 
     Ok(())

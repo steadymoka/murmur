@@ -1,3 +1,9 @@
+mod input;
+mod pin;
+
+use input::InputTracker;
+pub use pin::PinHistory;
+
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -18,13 +24,10 @@ impl vt100::Callbacks for TitleTracker {
     }
 }
 
-const PIN_HISTORY_MAX: usize = 50;
-
 pub struct Session {
     pub cwd: PathBuf,
-    pub pin_history: Vec<String>,
-    pub pin_index: Option<usize>,
-    pub input_buffer: String,
+    pub pins: PinHistory,
+    input: InputTracker,
     window_title: Arc<Mutex<String>>,
     parser: vt100::Parser<TitleTracker>,
     pty_rx: mpsc::Receiver<Vec<u8>>,
@@ -78,9 +81,8 @@ impl Session {
 
         Ok(Session {
             cwd,
-            pin_history: Vec::new(),
-            pin_index: None,
-            input_buffer: String::new(),
+            pins: PinHistory::new(),
+            input: InputTracker::new(),
             window_title: title_arc,
             parser,
             pty_rx: rx,
@@ -90,8 +92,6 @@ impl Session {
         })
     }
 
-    /// Drain raw byte chunks from the PTY channel without parsing.
-    /// Used by Focus mode to forward raw output to stdout.
     pub fn drain_raw_chunks(&mut self) -> Vec<Vec<u8>> {
         let mut chunks = Vec::new();
         while let Ok(bytes) = self.pty_rx.try_recv() {
@@ -100,17 +100,20 @@ impl Session {
         chunks
     }
 
-    /// Feed raw bytes into the vt100 parser only (no scrollback tracking).
-    /// Used after drain_raw_chunks to keep parser state in sync.
     pub fn feed_parser(&mut self, data: &[u8]) {
         self.parser.process(data);
     }
 
-    /// Process PTY output for Overview mode (drain + parse, no scrollback).
+    /// Process queued PTY output, capped to avoid blocking the event loop.
     pub fn process_pty_output(&mut self) {
-        let chunks = self.drain_raw_chunks();
-        for chunk in &chunks {
-            self.feed_parser(chunk);
+        const MAX_BYTES_PER_TICK: usize = 64 * 1024;
+        let mut processed = 0;
+        while let Ok(chunk) = self.pty_rx.try_recv() {
+            processed += chunk.len();
+            self.parser.process(&chunk);
+            if processed >= MAX_BYTES_PER_TICK {
+                break;
+            }
         }
     }
 
@@ -143,102 +146,51 @@ impl Session {
     }
 
     pub fn is_ai_tool(&self) -> bool {
-        let title = self.window_title();
-        let lower = title.to_ascii_lowercase();
-        lower.contains("claude") || lower.contains("codex")
-    }
-
-    pub fn current_pin(&self) -> &str {
-        match self.pin_index {
-            Some(i) => self.pin_history.get(i).map(|s| s.as_str()).unwrap_or(""),
-            None => self.pin_history.last().map(|s| s.as_str()).unwrap_or(""),
-        }
-    }
-
-    /// Returns Some((1-based position, total)) when navigating history, None when at latest.
-    pub fn pin_position(&self) -> Option<(usize, usize)> {
-        self.pin_index.map(|i| (i + 1, self.pin_history.len()))
-    }
-
-    pub fn pin_prev(&mut self) -> bool {
-        if self.pin_history.is_empty() {
-            return false;
-        }
-        match self.pin_index {
-            None => {
-                if self.pin_history.len() >= 2 {
-                    self.pin_index = Some(self.pin_history.len() - 2);
-                    true
-                } else {
-                    false
-                }
-            }
-            Some(0) => false,
-            Some(i) => {
-                self.pin_index = Some(i - 1);
-                true
-            }
-        }
-    }
-
-    pub fn pin_next(&mut self) -> bool {
-        match self.pin_index {
-            None => false,
-            Some(i) if i + 1 >= self.pin_history.len() => {
-                self.pin_index = None;
-                true
-            }
-            Some(i) => {
-                self.pin_index = Some(i + 1);
-                true
-            }
-        }
-    }
-
-    pub fn pin_delete(&mut self) {
-        if self.pin_history.is_empty() {
-            return;
-        }
-        let remove_idx = self.pin_index.unwrap_or(self.pin_history.len() - 1);
-        self.pin_history.remove(remove_idx);
-        if self.pin_history.is_empty() {
-            self.pin_index = None;
-        } else if let Some(i) = self.pin_index {
-            if i >= self.pin_history.len() {
-                self.pin_index = None;
-            }
-        }
+        is_ai_tool_title(&self.window_title())
     }
 
     pub fn track_input(&mut self, c: char) {
-        match c {
-            '\r' => {
-                let trimmed = self.input_buffer.trim().to_string();
-                if !trimmed.is_empty() {
-                    self.pin_history.push(trimmed);
-                    if self.pin_history.len() > PIN_HISTORY_MAX {
-                        self.pin_history.remove(0);
-                    }
-                    self.pin_index = None;
-                }
-                self.input_buffer.clear();
-            }
-            '\n' => {
-                self.input_buffer.push('\n');
-            }
-            '\x03' => {
-                self.input_buffer.clear();
-            }
-            '\x7f' | '\x08' => {
-                self.input_buffer.pop();
-            }
-            '\x15' => {
-                self.input_buffer.clear();
-            }
-            c if !c.is_control() => {
-                self.input_buffer.push(c);
-            }
-            _ => {}
+        if let Some(command) = self.input.track(c) {
+            self.pins.push(command);
         }
+    }
+}
+
+const AI_TOOL_KEYWORDS: &[&str] = &["claude", "codex"];
+
+pub fn is_ai_tool_title(title: &str) -> bool {
+    AI_TOOL_KEYWORDS.iter().any(|kw| {
+        title
+            .as_bytes()
+            .windows(kw.len())
+            .any(|w| w.eq_ignore_ascii_case(kw.as_bytes()))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ai_tool_claude() {
+        assert!(is_ai_tool_title("Claude Code"));
+    }
+
+    #[test]
+    fn ai_tool_codex() {
+        assert!(is_ai_tool_title("Codex"));
+    }
+
+    #[test]
+    fn ai_tool_other() {
+        assert!(!is_ai_tool_title("vim"));
+        assert!(!is_ai_tool_title(""));
+    }
+
+    #[test]
+    fn ai_tool_case_insensitive() {
+        assert!(is_ai_tool_title("CLAUDE"));
+        assert!(is_ai_tool_title("cLaUdE"));
+        assert!(is_ai_tool_title("CODEX"));
     }
 }
