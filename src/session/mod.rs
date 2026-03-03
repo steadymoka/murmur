@@ -1,5 +1,6 @@
 mod input;
 mod pin;
+mod selection;
 
 use input::InputTracker;
 pub use pin::PinHistory;
@@ -138,6 +139,10 @@ impl Session {
         if let Some(command) = self.input.track(c) {
             if self.is_ai_tool() {
                 self.pins.push(command);
+            }
+        } else if c == '\r' && self.is_ai_tool() {
+            if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
+                self.pins.push(selected);
             }
         }
     }
