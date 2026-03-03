@@ -1,9 +1,8 @@
-mod input;
 mod pin;
 mod proc_name;
+mod prompt;
 mod selection;
 
-use input::InputTracker;
 pub use pin::PinHistory;
 
 use std::io::{Read, Write};
@@ -28,7 +27,7 @@ impl vt100::Callbacks for TitleTracker {
 
 pub struct Session {
     pub pins: PinHistory,
-    input: InputTracker,
+    pin_update_pending: bool,
     window_title: Arc<Mutex<String>>,
     parser: vt100::Parser<TitleTracker>,
     pty_rx: mpsc::Receiver<Vec<u8>>,
@@ -82,7 +81,7 @@ impl Session {
 
         Ok(Session {
             pins: PinHistory::new(),
-            input: InputTracker::new(),
+            pin_update_pending: false,
             window_title: title_arc,
             parser,
             pty_rx: rx,
@@ -144,15 +143,35 @@ impl Session {
         is_ai_tool_title(&self.window_title())
     }
 
-    pub fn track_input(&mut self, c: char) {
-        let is_ai = c == '\r' && self.is_ai_tool();
-        if let Some(command) = self.input.track(c) {
-            if is_ai {
-                self.pins.push(command);
-            }
-        } else if is_ai {
-            if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
-                self.pins.push(selected);
+    /// Extract prompt from the screen and save as PIN.
+    /// Called when Enter is pressed inside an AI tool.
+    pub fn record_pin(&mut self) {
+        if let Some(text) = prompt::extract_input_area(self.parser.screen()) {
+            self.pins.push(text);
+            self.pin_update_pending = true;
+            return;
+        }
+        if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
+            self.pins.push(selected);
+        }
+    }
+
+    /// Check conversation history for an expanded prompt and update the last PIN.
+    /// Called after PTY output is processed (deferred update for slash command expansion).
+    /// Only updates if the conversation entry is an expansion of the current PIN
+    /// (e.g., "/us" → "/usage"), not a completely different prompt.
+    pub fn try_update_pin(&mut self) {
+        if !self.pin_update_pending {
+            return;
+        }
+        self.pin_update_pending = false;
+        let current = self.pins.current().to_string();
+        if current.is_empty() {
+            return;
+        }
+        if let Some(conv) = prompt::extract_latest_conversation_prompt(self.parser.screen()) {
+            if conv != current && conv.starts_with(&current) {
+                self.pins.update_last(conv);
             }
         }
     }

@@ -68,6 +68,12 @@ impl PinHistory {
         }
     }
 
+    pub fn update_last(&mut self, entry: String) {
+        if let Some(last) = self.entries.last_mut() {
+            *last = entry;
+        }
+    }
+
     pub fn delete(&mut self) {
         if self.entries.is_empty() {
             return;

@@ -17,7 +17,7 @@ use crossterm::event::{
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 
 use app::App;
-use key::{key_event_to_bytes, key_event_to_track_char};
+use key::key_event_to_bytes;
 use layout::focus_bar_rows;
 use session::Session;
 use ui::ansi;
@@ -68,11 +68,14 @@ fn poll_update(app: &mut App, rx: &mpsc::Receiver<Option<String>>) {
     }
 }
 
-/// Forward a key event to the PTY session, tracking input for pin history.
+/// Forward a key event to the PTY session, recording PIN on Enter in AI mode.
 fn forward_key(session: &mut Session, key: &crossterm::event::KeyEvent) -> Result<()> {
     if let Some(bytes) = key_event_to_bytes(key) {
-        if let Some(tb) = key_event_to_track_char(key) {
-            session.track_input(tb);
+        if key.code == KeyCode::Enter
+            && !key.modifiers.contains(KeyModifiers::SHIFT)
+            && session.is_ai_tool()
+        {
+            session.record_pin();
         }
         session.write_bytes(&bytes)?;
     }
@@ -156,6 +159,8 @@ fn run_focus_tick(stdout: &mut io::Stdout, app: &mut App, idx: usize) -> Result<
                 session.feed_parser(chunk);
             }
             stdout.flush()?;
+
+            session.try_update_pin();
 
             is_alt = session.screen().alternate_screen();
             let is_ai = session.is_ai_tool();

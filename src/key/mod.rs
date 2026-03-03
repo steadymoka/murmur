@@ -56,28 +56,6 @@ pub fn key_event_to_bytes(key: &KeyEvent) -> Option<Vec<u8>> {
     Some(bytes)
 }
 
-/// Extract a char for input tracking (printable chars, control bytes, backspace).
-pub fn key_event_to_track_char(key: &KeyEvent) -> Option<char> {
-    match key.code {
-        KeyCode::Char(c) => {
-            if key.modifiers.contains(KeyModifiers::CONTROL) {
-                ctrl_byte(c).map(|b| b as char)
-            } else {
-                Some(c)
-            }
-        }
-        KeyCode::Enter => {
-            if key.modifiers.contains(KeyModifiers::SHIFT) {
-                Some('\n')
-            } else {
-                Some('\r')
-            }
-        }
-        KeyCode::Backspace => Some('\x7f'),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,8 +64,6 @@ mod tests {
     fn make_key(code: KeyCode, modifiers: KeyModifiers) -> KeyEvent {
         KeyEvent::new_with_kind(code, modifiers, KeyEventKind::Press)
     }
-
-    // key_event_to_bytes tests
 
     #[test]
     fn bytes_char() {
@@ -200,41 +176,4 @@ mod tests {
         assert_eq!(key_event_to_bytes(&key), Some(vec![0x1b]));
     }
 
-    // key_event_to_track_char tests
-
-    #[test]
-    fn track_char_printable() {
-        let key = make_key(KeyCode::Char('x'), KeyModifiers::NONE);
-        assert_eq!(key_event_to_track_char(&key), Some('x'));
-    }
-
-    #[test]
-    fn track_char_enter() {
-        let key = make_key(KeyCode::Enter, KeyModifiers::NONE);
-        assert_eq!(key_event_to_track_char(&key), Some('\r'));
-    }
-
-    #[test]
-    fn track_char_shift_enter() {
-        let key = make_key(KeyCode::Enter, KeyModifiers::SHIFT);
-        assert_eq!(key_event_to_track_char(&key), Some('\n'));
-    }
-
-    #[test]
-    fn track_char_backspace() {
-        let key = make_key(KeyCode::Backspace, KeyModifiers::NONE);
-        assert_eq!(key_event_to_track_char(&key), Some('\x7f'));
-    }
-
-    #[test]
-    fn track_char_ctrl() {
-        let key = make_key(KeyCode::Char('c'), KeyModifiers::CONTROL);
-        assert_eq!(key_event_to_track_char(&key), Some('\x03'));
-    }
-
-    #[test]
-    fn track_char_none() {
-        let key = make_key(KeyCode::Up, KeyModifiers::NONE);
-        assert_eq!(key_event_to_track_char(&key), None);
-    }
 }
