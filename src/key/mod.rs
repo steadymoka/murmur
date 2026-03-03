@@ -2,7 +2,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 fn ctrl_byte(c: char) -> Option<u8> {
     let b = c.to_ascii_lowercase() as u8;
-    b.is_ascii_lowercase().then_some(b - b'a' + 1)
+    b.is_ascii_lowercase().then(|| b - b'a' + 1)
 }
 
 /// Convert a crossterm KeyEvent to raw bytes suitable for PTY input.
@@ -175,5 +175,4 @@ mod tests {
         let key = make_key(KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(key_event_to_bytes(&key), Some(vec![0x1b]));
     }
-
 }

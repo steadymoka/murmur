@@ -54,10 +54,7 @@ mod tests {
 
     #[test]
     fn marker_with_leading_spaces() {
-        assert_eq!(
-            extract_marker_text("  ❯ Indented"),
-            Some("Indented".into())
-        );
+        assert_eq!(extract_marker_text("  ❯ Indented"), Some("Indented".into()));
     }
 
     #[test]
@@ -90,7 +87,8 @@ mod tests {
     fn extract_bottom_up_priority() {
         let mut parser = vt100::Parser::new(24, 80, 0);
         // Two markers: bottom one should win
-        parser.process(b"\xe2\x9d\xaf Old selection\r\nsome text\r\n\xe2\x9d\xaf Current selection");
+        parser
+            .process(b"\xe2\x9d\xaf Old selection\r\nsome text\r\n\xe2\x9d\xaf Current selection");
         let result = extract_selected_option(parser.screen());
         assert_eq!(result, Some("Current selection".into()));
     }

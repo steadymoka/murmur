@@ -161,10 +161,7 @@ mod tests {
     #[test]
     fn parse_escaped_quotes() {
         let line = r#"{"display":"say \"hello\"","timestamp":2000,"project":"/p"}"#;
-        assert_eq!(
-            parse_entry(line, 1999, "/p"),
-            Some("say \"hello\"".into())
-        );
+        assert_eq!(parse_entry(line, 1999, "/p"), Some("say \"hello\"".into()));
     }
 
     #[test]
@@ -219,11 +216,7 @@ mod tests {
         let dir = std::env::temp_dir().join("murmur-test-history");
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("test.jsonl");
-        std::fs::write(
-            &path,
-            "first line\nsecond line\nthird line\n",
-        )
-        .unwrap();
+        std::fs::write(&path, "first line\nsecond line\nthird line\n").unwrap();
         assert_eq!(read_last_line(&path), Some("third line".into()));
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -3,11 +3,7 @@
 #[cfg(target_os = "macos")]
 pub fn from_pid(pid: libc::pid_t) -> Option<String> {
     extern "C" {
-        fn proc_name(
-            pid: libc::c_int,
-            buffer: *mut libc::c_char,
-            buffersize: u32,
-        ) -> libc::c_int;
+        fn proc_name(pid: libc::c_int, buffer: *mut libc::c_char, buffersize: u32) -> libc::c_int;
     }
     let mut buf = [0u8; 256];
     let len = unsafe { proc_name(pid, buf.as_mut_ptr() as *mut libc::c_char, buf.len() as u32) };
