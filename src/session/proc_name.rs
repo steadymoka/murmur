@@ -21,6 +21,6 @@ pub fn from_pid(pid: libc::pid_t) -> Option<String> {
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
-pub fn from_pid(_pid: libc::pid_t) -> Option<String> {
+pub fn from_pid(_pid: i32) -> Option<String> {
     None
 }

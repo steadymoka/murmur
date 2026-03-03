@@ -30,9 +30,6 @@ jobs:
             runner: ubuntu-latest
             archive: tar.gz
             cross: true
-          - target: x86_64-pc-windows-msvc
-            runner: windows-latest
-            archive: zip
     steps:
       - uses: actions/checkout@v4
 
@@ -57,11 +54,6 @@ jobs:
           cd target/${{ matrix.target }}/release
           tar czf ../../../murmur-${{ matrix.target }}.tar.gz murmur
           cd ../../..
-
-      - name: Package (windows)
-        if: matrix.archive == 'zip'
-        shell: pwsh
-        run: Compress-Archive -Path target/${{ matrix.target }}/release/murmur.exe -DestinationPath murmur-${{ matrix.target }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
