@@ -1,5 +1,6 @@
 mod input;
 mod pin;
+mod proc_name;
 mod selection;
 
 use input::InputTracker;
@@ -132,15 +133,24 @@ impl Session {
     }
 
     pub fn is_ai_tool(&self) -> bool {
+        let matched_proc = self
+            .master
+            .process_group_leader()
+            .and_then(proc_name::from_pid)
+            .is_some_and(|name| is_ai_tool_name(&name));
+        if matched_proc {
+            return true;
+        }
         is_ai_tool_title(&self.window_title())
     }
 
     pub fn track_input(&mut self, c: char) {
+        let is_ai = c == '\r' && self.is_ai_tool();
         if let Some(command) = self.input.track(c) {
-            if self.is_ai_tool() {
+            if is_ai {
                 self.pins.push(command);
             }
-        } else if c == '\r' && self.is_ai_tool() {
+        } else if is_ai {
             if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
                 self.pins.push(selected);
             }
@@ -150,7 +160,13 @@ impl Session {
 
 const AI_TOOL_KEYWORDS: &[&str] = &["claude", "codex"];
 
-pub fn is_ai_tool_title(title: &str) -> bool {
+fn is_ai_tool_name(name: &str) -> bool {
+    AI_TOOL_KEYWORDS
+        .iter()
+        .any(|kw| name.eq_ignore_ascii_case(kw))
+}
+
+fn is_ai_tool_title(title: &str) -> bool {
     AI_TOOL_KEYWORDS.iter().any(|kw| {
         title
             .as_bytes()
@@ -184,5 +200,20 @@ mod tests {
         assert!(is_ai_tool_title("CLAUDE"));
         assert!(is_ai_tool_title("cLaUdE"));
         assert!(is_ai_tool_title("CODEX"));
+    }
+
+    #[test]
+    fn ai_tool_name_exact() {
+        assert!(is_ai_tool_name("claude"));
+        assert!(is_ai_tool_name("Claude"));
+        assert!(is_ai_tool_name("codex"));
+        assert!(is_ai_tool_name("CODEX"));
+    }
+
+    #[test]
+    fn ai_tool_name_rejects_other() {
+        assert!(!is_ai_tool_name("node"));
+        assert!(!is_ai_tool_name("zsh"));
+        assert!(!is_ai_tool_name(""));
     }
 }

@@ -93,7 +93,7 @@ fn render_all_bars(stdout: &mut io::Stdout, app: &App, idx: usize) {
             rows: app.rows,
             cols: app.cols,
             bar_rows: app.bar_rows,
-            is_ai: session::is_ai_tool_title(&title),
+            is_ai: session.is_ai_tool(),
             pinned_prompt: session.pins.current(),
             pin_position: session.pins.position(),
             prefix_armed: app.prefix_armed,
