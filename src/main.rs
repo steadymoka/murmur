@@ -393,6 +393,10 @@ fn handle_focus_key(
 
     if key.code == KeyCode::Enter {
         if enter_resized {
+            if let Some(session) = app.sessions.get(idx) {
+                stdout.write_all(&session.screen().contents_formatted()).ok();
+            }
+            restore_session_cursor(stdout, app, idx);
             refresh_hint_bar(stdout, app, idx);
         }
         if let Some(session) = app.sessions.get(idx) {
