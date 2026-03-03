@@ -1,5 +1,4 @@
 /// Resolve a process name from its PID using platform-specific APIs.
-
 #[cfg(target_os = "macos")]
 pub fn from_pid(pid: libc::pid_t) -> Option<String> {
     extern "C" {

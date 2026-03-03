@@ -21,13 +21,11 @@ pub fn extract_input_area(screen: &vt100::Screen) -> Option<String> {
     let mut lower_sep = None;
     for i in (0..lines.len()).rev() {
         if is_separator(&lines[i]) {
-            if lower_sep.is_none() {
-                lower_sep = Some(i);
-            } else {
+            if let Some(lower) = lower_sep {
                 // Found upper separator — extract between them
-                let upper = i;
-                let lower = lower_sep.unwrap();
-                return extract_between(upper, lower, &lines);
+                return extract_between(i, lower, &lines);
+            } else {
+                lower_sep = Some(i);
             }
         }
     }
