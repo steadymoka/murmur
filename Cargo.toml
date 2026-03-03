@@ -1,6 +1,6 @@
 [package]
 name = "murmur"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 description = "Terminal command center for AI coding sessions"
 license = "MIT"
