@@ -4,9 +4,6 @@ const SEPARATOR_MIN_LEN: usize = 10;
 /// Prefix used in Claude Code's input area: ❯ followed by non-breaking space (U+00A0).
 const INPUT_PREFIX: &str = "❯\u{a0}";
 
-/// Prefix used in Claude Code's conversation history: ❯ followed by regular space.
-const CONVERSATION_PREFIX: &str = "❯ ";
-
 fn is_separator(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.len() >= SEPARATOR_MIN_LEN && trimmed.chars().all(|c| c == SEPARATOR_CHAR)
@@ -73,41 +70,6 @@ fn extract_between(upper: usize, lower: usize, lines: &[String]) -> Option<Strin
     } else {
         Some(text)
     }
-}
-
-/// Extract the latest prompt from conversation history (for deferred update).
-///
-/// Scans bottom-to-top for `❯ ` (regular space) entries outside separator pairs.
-pub fn extract_latest_conversation_prompt(screen: &vt100::Screen) -> Option<String> {
-    let (_rows, cols) = screen.size();
-    let lines: Vec<String> = screen.rows(0, cols).collect();
-
-    // Track whether we're inside a separator-bounded region (input area)
-    let mut inside_separators = false;
-
-    for i in (0..lines.len()).rev() {
-        if is_separator(&lines[i]) {
-            inside_separators = !inside_separators;
-            continue;
-        }
-
-        if inside_separators {
-            continue;
-        }
-
-        let trimmed = lines[i].trim_end();
-        if let Some(rest) = trimmed.strip_prefix(CONVERSATION_PREFIX) {
-            // Skip if this is actually an input area prefix (NBSP)
-            if trimmed.starts_with(INPUT_PREFIX) {
-                continue;
-            }
-            let text = rest.trim().to_string();
-            if !text.is_empty() {
-                return Some(text);
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]
@@ -181,49 +143,6 @@ mod tests {
     }
 
     #[test]
-    fn extract_conversation_prompt() {
-        let mut input = Vec::new();
-        input.extend_from_slice("❯ /usage\r\n".as_bytes());
-        input.extend_from_slice(b"  response text\r\n");
-        input.extend_from_slice("────────────────────\r\n".as_bytes());
-        input.extend_from_slice("❯\u{a0}new prompt\r\n".as_bytes());
-        input.extend_from_slice("────────────────────".as_bytes());
-
-        let parser = make_screen(&input);
-        assert_eq!(
-            extract_latest_conversation_prompt(parser.screen()),
-            Some("/usage".into())
-        );
-    }
-
-    #[test]
-    fn conversation_skips_input_area() {
-        let mut input = Vec::new();
-        input.extend_from_slice("────────────────────\r\n".as_bytes());
-        input.extend_from_slice("❯\u{a0}typing here\r\n".as_bytes());
-        input.extend_from_slice("────────────────────".as_bytes());
-
-        let parser = make_screen(&input);
-        // Should not pick up the input area entry
-        assert_eq!(extract_latest_conversation_prompt(parser.screen()), None);
-    }
-
-    #[test]
-    fn conversation_finds_latest() {
-        let mut input = Vec::new();
-        input.extend_from_slice("❯ first prompt\r\n".as_bytes());
-        input.extend_from_slice(b"response\r\n");
-        input.extend_from_slice("❯ second prompt\r\n".as_bytes());
-        input.extend_from_slice(b"response");
-
-        let parser = make_screen(&input);
-        assert_eq!(
-            extract_latest_conversation_prompt(parser.screen()),
-            Some("second prompt".into())
-        );
-    }
-
-    #[test]
     fn extract_pasted_text_placeholder() {
         let mut input = Vec::new();
         input.extend_from_slice("────────────────────\r\n".as_bytes());
@@ -275,8 +194,6 @@ mod tests {
         ];
         let parser = screen_from_rows(rows, 28, 156);
         assert_eq!(extract_input_area(parser.screen()), Some("hi".into()));
-        // No conversation entries yet
-        assert_eq!(extract_latest_conversation_prompt(parser.screen()), None);
     }
 
     #[test]
@@ -301,12 +218,6 @@ mod tests {
 
         // Input area should capture what's typed
         assert_eq!(extract_input_area(parser.screen()), Some("/us".into()));
-
-        // Latest conversation prompt is "kkkk" (most recent submitted)
-        assert_eq!(
-            extract_latest_conversation_prompt(parser.screen()),
-            Some("kkkk".into())
-        );
     }
 
     #[test]
@@ -332,11 +243,6 @@ mod tests {
         let parser = screen_from_rows(rows, 28, 156);
 
         assert_eq!(extract_input_area(parser.screen()), Some("hihi".into()));
-        // Conversation should show "/usage" (expanded from /us)
-        assert_eq!(
-            extract_latest_conversation_prompt(parser.screen()),
-            Some("/usage".into())
-        );
     }
 
     #[test]
@@ -414,53 +320,6 @@ mod tests {
             extract_input_area(parser.screen()),
             Some("[Pasted text #1 +20 lines]".into())
         );
-    }
-
-    #[test]
-    fn deferred_update_expands_slash_command() {
-        // Simulate: PIN was "/us", then conversation shows "/usage"
-        // try_update_pin should update because "/usage".starts_with("/us")
-        let mut pins = super::super::PinHistory::new();
-        pins.push("/us".into());
-        assert_eq!(pins.current(), "/us");
-
-        // Simulate deferred: conversation has "/usage"
-        let expanded = "/usage";
-        let current = pins.current().to_string();
-        if expanded != current && expanded.starts_with(&current) {
-            pins.update_last(expanded.into());
-        }
-        assert_eq!(pins.current(), "/usage");
-    }
-
-    #[test]
-    fn deferred_update_does_not_overwrite_with_old_prompt() {
-        // Simulate: PIN was "하이", conversation still shows old "뭔가 잘 안되든거 같기도 .."
-        // try_update_pin should NOT update because old prompt doesn't start with "하이"
-        let mut pins = super::super::PinHistory::new();
-        pins.push("하이".into());
-
-        let old_conv = "뭔가 잘 안되든거 같기도 ..";
-        let current = pins.current().to_string();
-        if old_conv != current && old_conv.starts_with(&current) {
-            pins.update_last(old_conv.into());
-        }
-        // Should still be "하이", not overwritten
-        assert_eq!(pins.current(), "하이");
-    }
-
-    #[test]
-    fn deferred_update_same_text_no_op() {
-        // PIN is "hello", conversation also shows "hello" — no update needed
-        let mut pins = super::super::PinHistory::new();
-        pins.push("hello".into());
-
-        let conv = "hello";
-        let current = pins.current().to_string();
-        if conv != current && conv.starts_with(&current) {
-            pins.update_last(conv.into());
-        }
-        assert_eq!(pins.current(), "hello");
     }
 
     #[test]

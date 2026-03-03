@@ -1,3 +1,4 @@
+mod history;
 mod pin;
 mod proc_name;
 mod prompt;
@@ -9,6 +10,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use portable_pty::{CommandBuilder, MasterPty, PtySize};
@@ -27,7 +29,8 @@ impl vt100::Callbacks for TitleTracker {
 
 pub struct Session {
     pub pins: PinHistory,
-    pin_update_pending: bool,
+    pin_pending_ts: Option<u128>,
+    project_path: String,
     window_title: Arc<Mutex<String>>,
     parser: vt100::Parser<TitleTracker>,
     pty_rx: mpsc::Receiver<Vec<u8>>,
@@ -81,7 +84,8 @@ impl Session {
 
         Ok(Session {
             pins: PinHistory::new(),
-            pin_update_pending: false,
+            pin_pending_ts: None,
+            project_path: cwd.to_string_lossy().to_string(),
             window_title: title_arc,
             parser,
             pty_rx: rx,
@@ -148,33 +152,34 @@ impl Session {
     pub fn record_pin(&mut self) {
         if let Some(text) = prompt::extract_input_area(self.parser.screen()) {
             self.pins.push(text);
-            self.pin_update_pending = true;
-            return;
-        }
-        if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
+        } else if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
             self.pins.push(selected);
         }
+        self.pin_pending_ts = Some(now_ms());
     }
 
-    /// Check conversation history for an expanded prompt and update the last PIN.
-    /// Called after PTY output is processed (deferred update for slash command expansion).
-    /// Only updates if the conversation entry is an expansion of the current PIN
-    /// (e.g., "/us" → "/usage"), not a completely different prompt.
+    /// Try to update the last PIN from `~/.claude/history.jsonl`.
+    /// Called after PTY output is processed. If a newer history entry exists
+    /// for this project, it replaces the screen-based capture with the exact
+    /// submitted prompt (including slash command expansion).
     pub fn try_update_pin(&mut self) {
-        if !self.pin_update_pending {
+        let Some(ts) = self.pin_pending_ts.take() else {
             return;
-        }
-        self.pin_update_pending = false;
-        let current = self.pins.current().to_string();
-        if current.is_empty() {
-            return;
-        }
-        if let Some(conv) = prompt::extract_latest_conversation_prompt(self.parser.screen()) {
-            if conv != current && conv.starts_with(&current) {
-                self.pins.update_last(conv);
+        };
+        if let Some(prompt) = history::read_latest_prompt(ts, &self.project_path) {
+            let current = self.pins.current().to_string();
+            if !current.is_empty() && prompt != current {
+                self.pins.update_last(prompt);
             }
         }
     }
+}
+
+fn now_ms() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
 }
 
 const AI_TOOL_KEYWORDS: &[&str] = &["claude", "codex"];
