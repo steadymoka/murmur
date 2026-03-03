@@ -203,6 +203,8 @@ fn is_ai_tool_title(title: &str) -> bool {
 mod tests {
     use super::*;
 
+    // ── is_ai_tool_title ─────────────────────────────────────────────
+
     #[test]
     fn ai_tool_claude() {
         assert!(is_ai_tool_title("Claude Code"));
@@ -227,6 +229,36 @@ mod tests {
     }
 
     #[test]
+    fn ai_tool_title_real_patterns() {
+        assert!(is_ai_tool_title("~/project — Claude Code"));
+        assert!(is_ai_tool_title("murmur (main) — Claude Code"));
+        assert!(is_ai_tool_title("codex — ~/my-project"));
+    }
+
+    #[test]
+    fn ai_tool_title_keyword_in_path() {
+        assert!(is_ai_tool_title("vim ~/claude-project/main.rs"));
+        assert!(is_ai_tool_title("/home/user/codex/file.txt"));
+    }
+
+    #[test]
+    fn ai_tool_title_shorter_than_keyword() {
+        assert!(!is_ai_tool_title("zsh"));
+        assert!(!is_ai_tool_title("vi"));
+        assert!(!is_ai_tool_title("a"));
+    }
+
+    #[test]
+    fn ai_tool_title_unrelated() {
+        assert!(!is_ai_tool_title("node server.js"));
+        assert!(!is_ai_tool_title("npm run dev"));
+        assert!(!is_ai_tool_title("cargo test"));
+        assert!(!is_ai_tool_title("~/Workspace/my-project"));
+    }
+
+    // ── is_ai_tool_name ──────────────────────────────────────────────
+
+    #[test]
     fn ai_tool_name_exact() {
         assert!(is_ai_tool_name("claude"));
         assert!(is_ai_tool_name("Claude"));
@@ -239,5 +271,12 @@ mod tests {
         assert!(!is_ai_tool_name("node"));
         assert!(!is_ai_tool_name("zsh"));
         assert!(!is_ai_tool_name(""));
+    }
+
+    #[test]
+    fn ai_tool_name_rejects_partial() {
+        assert!(!is_ai_tool_name("claude-code"));
+        assert!(!is_ai_tool_name("codex-cli"));
+        assert!(!is_ai_tool_name("my-claude"));
     }
 }

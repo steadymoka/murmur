@@ -178,12 +178,15 @@ pub fn render_hint_bar(
         )
         .ok();
 
+        let current = env!("CARGO_PKG_VERSION");
         if let Some(ver) = update_version {
             write!(
                 w,
-                "{DIM} \u{2502} {GREEN}\u{2191} v{ver} available{RESET}{BAR_BG}"
+                "{DIM} \u{2502} v{current} {GREEN}\u{2191} v{ver}{RESET}{BAR_BG}"
             )
             .ok();
+        } else {
+            write!(w, "{DIM} \u{2502} v{current}{RESET}{BAR_BG}").ok();
         }
 
         write!(w, "{CLEAR_EOL}{RESET}").ok();
@@ -329,6 +332,8 @@ mod tests {
         let s = output(&buf);
         assert!(s.contains("my-title"));
         assert!(s.contains("Ctrl+\\"));
+        let current = env!("CARGO_PKG_VERSION");
+        assert!(s.contains(&format!("v{current}")));
     }
 
     #[test]
@@ -346,7 +351,9 @@ mod tests {
         let mut buf = Vec::new();
         render_hint_bar(&mut buf, 24, false, "", Some("0.2.0"));
         let s = output(&buf);
-        assert!(s.contains("v0.2.0 available"));
+        let current = env!("CARGO_PKG_VERSION");
+        assert!(s.contains(&format!("v{current}")));
+        assert!(s.contains("v0.2.0"));
     }
 
     #[test]
