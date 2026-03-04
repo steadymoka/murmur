@@ -1,5 +1,40 @@
 const SELECTION_MARKERS: &[char] = &['❯', '▸', '►', '❱'];
 
+/// Returns true if the selected text looks like a tool permission prompt
+/// rather than an AskUserQuestion selection.
+///
+/// Permission prompts are Yes/No variants (e.g. "Yes", "No, keep planning",
+/// "Yes, auto-accept edits"), optionally with a number prefix ("1. Yes").
+pub fn is_permission_prompt(text: &str) -> bool {
+    let core = strip_number_prefix(text);
+    core.eq_ignore_ascii_case("yes")
+        || core.eq_ignore_ascii_case("no")
+        || starts_with_ignore_ascii_case(core, "yes,")
+        || starts_with_ignore_ascii_case(core, "yes ")
+        || starts_with_ignore_ascii_case(core, "no,")
+        || starts_with_ignore_ascii_case(core, "no ")
+}
+
+fn starts_with_ignore_ascii_case(s: &str, prefix: &str) -> bool {
+    s.as_bytes()
+        .get(..prefix.len())
+        .is_some_and(|b| b.eq_ignore_ascii_case(prefix.as_bytes()))
+}
+
+/// Strip optional "N. " number prefix: "1. Yes" → "Yes", "hello" → "hello".
+fn strip_number_prefix(text: &str) -> &str {
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i > 0 && text[i..].starts_with(". ") {
+        &text[i + 2..]
+    } else {
+        text
+    }
+}
+
 /// Extract the selected option text from a vt100 screen by scanning for selection markers.
 ///
 /// Claude Code renders selection UIs with a marker (e.g. `❯`) before the highlighted option.
@@ -106,5 +141,101 @@ mod tests {
         let parser = vt100::Parser::new(24, 80, 0);
         let result = extract_selected_option(parser.screen());
         assert_eq!(result, None);
+    }
+
+    // ── is_permission_prompt ────────────────────────────────────────
+
+    #[test]
+    fn permission_basic_yes_no() {
+        assert!(is_permission_prompt("Yes"));
+        assert!(is_permission_prompt("No"));
+        assert!(is_permission_prompt("yes"));
+        assert!(is_permission_prompt("YES"));
+        assert!(is_permission_prompt("no"));
+        assert!(is_permission_prompt("NO"));
+    }
+
+    #[test]
+    fn permission_yes_with_comma_qualifier() {
+        assert!(is_permission_prompt("Yes, auto-accept edits"));
+        assert!(is_permission_prompt("Yes, and don't ask again for this session"));
+        assert!(is_permission_prompt("Yes, and don't ask again for `npm test`"));
+        assert!(is_permission_prompt("Yes, and don't ask again for npm:*"));
+        assert!(is_permission_prompt("Yes, allow all edits during this session"));
+        assert!(is_permission_prompt("Yes, I trust this folder"));
+        assert!(is_permission_prompt(
+            "Yes, clear context (50% used) and auto-accept edits (shift+tab)"
+        ));
+    }
+
+    #[test]
+    fn permission_yes_with_space_qualifier() {
+        assert!(is_permission_prompt("Yes allow all edits during this session"));
+        assert!(is_permission_prompt("Yes manually approve edits"));
+    }
+
+    #[test]
+    fn permission_no_with_qualifier() {
+        assert!(is_permission_prompt("No, keep planning"));
+        assert!(is_permission_prompt("No, exit Claude Code"));
+    }
+
+    #[test]
+    fn permission_numbered() {
+        assert!(is_permission_prompt("1. Yes"));
+        assert!(is_permission_prompt("2. Yes, auto-accept edits"));
+        assert!(is_permission_prompt("3. No"));
+        assert!(is_permission_prompt("1. No, keep planning"));
+        assert!(is_permission_prompt(
+            "42. Yes, and don't ask again for this session"
+        ));
+    }
+
+    #[test]
+    fn not_permission_custom_options() {
+        assert!(!is_permission_prompt("1. 한식"));
+        assert!(!is_permission_prompt("양식"));
+        assert!(!is_permission_prompt("Option A"));
+        assert!(!is_permission_prompt("파스타, 피자, 버거 등"));
+    }
+
+    #[test]
+    fn not_permission_system_options() {
+        assert!(!is_permission_prompt("Type something."));
+        assert!(!is_permission_prompt("Chat about this"));
+        assert!(!is_permission_prompt("Skip interview and plan immediately"));
+        assert!(!is_permission_prompt("Other"));
+    }
+
+    #[test]
+    fn not_permission_words_starting_with_no() {
+        assert!(!is_permission_prompt("Notify admin"));
+        assert!(!is_permission_prompt("None of the above"));
+        assert!(!is_permission_prompt("Normal mode"));
+    }
+
+    #[test]
+    fn not_permission_words_starting_with_yes() {
+        assert!(!is_permission_prompt("Yesterday was great"));
+    }
+
+    // ── strip_number_prefix ─────────────────────────────────────────
+
+    #[test]
+    fn strip_prefix_with_number() {
+        assert_eq!(strip_number_prefix("1. Yes"), "Yes");
+        assert_eq!(strip_number_prefix("12. Option"), "Option");
+    }
+
+    #[test]
+    fn strip_prefix_no_number() {
+        assert_eq!(strip_number_prefix("Yes"), "Yes");
+        assert_eq!(strip_number_prefix("한식"), "한식");
+    }
+
+    #[test]
+    fn strip_prefix_no_dot_space() {
+        assert_eq!(strip_number_prefix("1Yes"), "1Yes");
+        assert_eq!(strip_number_prefix("1.Yes"), "1.Yes");
     }
 }

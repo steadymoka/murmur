@@ -162,7 +162,7 @@ pub fn render_hint_bar(
         };
         write!(
             w,
-            "{PREFIX_STYLE} Ctrl+\\ {PREFIX_KEY_STYLE} []: pin  x: unpin{update_hint}  q: quit {RESET}"
+            "{PREFIX_STYLE} Ctrl+\\ {PREFIX_KEY_STYLE} x: unpin{update_hint}  q: quit {RESET}"
         )
         .ok();
     } else {
@@ -341,7 +341,6 @@ mod tests {
         let mut buf = Vec::new();
         render_hint_bar(&mut buf, 24, true, "", None);
         let s = output(&buf);
-        assert!(s.contains("[]: pin"));
         assert!(s.contains("x: unpin"));
         assert!(s.contains("q: quit"));
     }

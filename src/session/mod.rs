@@ -150,12 +150,23 @@ impl Session {
     /// Extract prompt from the screen and save as PIN.
     /// Called when Enter is pressed inside an AI tool.
     pub fn record_pin(&mut self) {
-        if let Some(text) = prompt::extract_input_area(self.parser.screen()) {
+        let pushed = if let Some(text) = prompt::extract_input_area(self.parser.screen()) {
             self.pins.push(text);
+            true
         } else if let Some(selected) = selection::extract_selected_option(self.parser.screen()) {
-            self.pins.push(selected);
+            if selection::is_permission_prompt(&selected) {
+                false
+            } else {
+                self.pins.push(selected);
+                true
+            }
+        } else {
+            false
+        };
+
+        if pushed {
+            self.pin_pending_ts = Some(now_ms());
         }
-        self.pin_pending_ts = Some(now_ms());
     }
 
     /// Try to update the last PIN from `~/.claude/history.jsonl`.
