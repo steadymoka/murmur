@@ -11,8 +11,9 @@ Murmur wraps your terminal in a thin PTY layer that detects AI coding tools (Cla
 
 ## Features
 
-- **Prompt pinning** — Automatically captures commands entered inside AI tools as a navigable history bar
-- **AI tool detection** — Recognizes Claude Code and Codex by window title; shows the pin bar only during AI sessions
+- **Prompt pinning** — Automatically captures prompts entered inside AI tools as a navigable history bar
+- **Smart capture** — Recognizes slash command expansion, multiline prompts, pasted text, and filters out permission prompts (Yes/No) so only meaningful input is pinned
+- **AI tool detection** — Recognizes Claude Code and Codex by process name; shows the pin bar only during AI sessions
 - **PTY passthrough** — Zero-interference raw terminal I/O with full ANSI support
 - **Update notifications** — Background check for new releases, shown in the hint bar
 
@@ -48,17 +49,17 @@ All input is forwarded to the PTY. `Ctrl+\` is the prefix key.
 
 | Key | Action |
 | --- | --- |
-| `Ctrl+\` `[` | Previous pin (older) |
-| `Ctrl+\` `]` | Next pin (newer) |
+| `Ctrl+[` | Previous pin (older) |
+| `Ctrl+]` | Next pin (newer) |
 | `Ctrl+\` `x` | Delete current pin |
 | `Ctrl+\` `u` | Show update info |
 | `Ctrl+\` `q` | Quit |
 
 ## How It Works
 
-Murmur attaches your terminal to a PTY and reserves a scroll region at the bottom for context bars. A VT100 parser runs in parallel to track window titles and input.
+Murmur attaches your terminal to a PTY and reserves a scroll region at the bottom for context bars. A VT100 parser runs in parallel to track process names and screen content.
 
-When the window title contains a known AI tool name, murmur starts recording commands you enter. Each Enter keystroke pins the command to a history bar visible above the hint bar. You can navigate through pinned prompts with the prefix key combinations.
+When a known AI tool is detected, murmur starts recording prompts you enter. Each Enter keystroke pins the prompt to a history bar visible above the hint bar. Slash commands are expanded to their full form via Claude Code's history, and tool permission responses (Yes/No) are filtered out so only your actual prompts are kept.
 
 The prefix key (`Ctrl+\`) is the only input murmur intercepts — everything else passes through untouched.
 
