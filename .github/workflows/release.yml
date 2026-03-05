@@ -99,7 +99,7 @@ jobs:
             pkg.version = '${VERSION}';
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
-          echo "Publishing murmur-tui@${VERSION}"
+          echo "Publishing @steadymoka/murmur@${VERSION}"
 
       - name: Publish
         run: npm publish ./npm --access public

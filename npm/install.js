@@ -40,7 +40,7 @@ function getVersion() {
 function fetch(url) {
   return new Promise((resolve, reject) => {
     https
-      .get(url, { headers: { "User-Agent": "murmur-tui-npm" } }, (res) => {
+      .get(url, { headers: { "User-Agent": "@steadymoka/murmur-npm" } }, (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           return fetch(res.headers.location).then(resolve, reject);
         }

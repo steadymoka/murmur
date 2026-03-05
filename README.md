@@ -22,14 +22,14 @@ Murmur wraps your terminal in a thin PTY layer that detects AI coding tools (Cla
 ### Install globally
 
 ```bash
-npm i -g murmur-tui
+npm i -g @steadymoka/murmur
 murmur
 ```
 
 ### Run without install
 
 ```bash
-npx murmur-tui
+npx @steadymoka/murmur
 ```
 
 ### Build from source

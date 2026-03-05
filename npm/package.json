@@ -1,5 +1,5 @@
 {
-  "name": "murmur-tui",
+  "name": "@steadymoka/murmur",
   "version": "0.0.0",
   "description": "Terminal command center for AI coding sessions",
   "license": "MIT",

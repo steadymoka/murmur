@@ -198,7 +198,7 @@ pub fn render_update_message(w: &mut impl Write, row: u16, version: &str) {
     clear_line(w);
     write!(
         w,
-        "{BAR_BG}{GREEN} Update to v{version}: {BOLD}npm i -g murmur-tui{CLEAR_EOL}{RESET}"
+        "{BAR_BG}{GREEN} Update to v{version}: {BOLD}npm i -g @steadymoka/murmur{CLEAR_EOL}{RESET}"
     )
     .ok();
 }
@@ -361,7 +361,7 @@ mod tests {
         render_update_message(&mut buf, 24, "0.3.0");
         let s = output(&buf);
         assert!(s.contains("v0.3.0"));
-        assert!(s.contains("npm i -g murmur-tui"));
+        assert!(s.contains("npm i -g @steadymoka/murmur"));
     }
 
     #[test]
