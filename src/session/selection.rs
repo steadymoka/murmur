@@ -158,10 +158,16 @@ mod tests {
     #[test]
     fn permission_yes_with_comma_qualifier() {
         assert!(is_permission_prompt("Yes, auto-accept edits"));
-        assert!(is_permission_prompt("Yes, and don't ask again for this session"));
-        assert!(is_permission_prompt("Yes, and don't ask again for `npm test`"));
+        assert!(is_permission_prompt(
+            "Yes, and don't ask again for this session"
+        ));
+        assert!(is_permission_prompt(
+            "Yes, and don't ask again for `npm test`"
+        ));
         assert!(is_permission_prompt("Yes, and don't ask again for npm:*"));
-        assert!(is_permission_prompt("Yes, allow all edits during this session"));
+        assert!(is_permission_prompt(
+            "Yes, allow all edits during this session"
+        ));
         assert!(is_permission_prompt("Yes, I trust this folder"));
         assert!(is_permission_prompt(
             "Yes, clear context (50% used) and auto-accept edits (shift+tab)"
@@ -170,7 +176,9 @@ mod tests {
 
     #[test]
     fn permission_yes_with_space_qualifier() {
-        assert!(is_permission_prompt("Yes allow all edits during this session"));
+        assert!(is_permission_prompt(
+            "Yes allow all edits during this session"
+        ));
         assert!(is_permission_prompt("Yes manually approve edits"));
     }
 
